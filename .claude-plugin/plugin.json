@@ -1,0 +1,21 @@
+{
+  "name": "fencepost",
+  "version": "0.1.0",
+  "description": "Configurable permission checker for Claude Code tools. Intercepts every tool call and evaluates it against a YAML rule set — allowing, asking, or denying with actionable feedback.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PLUGIN_DIR}}/hooks/pre-tool-use.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "skills": [
+    "skills/audit.md"
+  ]
+}

@@ -1,0 +1,20 @@
+default: allow
+
+tools:
+  deny:
+    - tool: mcp__dangerous_*
+      description: Dangerous MCP tool blocked
+      alternative: Use a safe tool instead
+
+  allow:
+    - Read
+    - Write
+    - Edit
+    - Glob
+
+  bash:
+    deny:
+      - git push --force
+    allow:
+      - ls
+      - cat
