@@ -6,13 +6,13 @@ A Claude Code skill that reads the audit log, analyses decision patterns, and su
 
 ## How It's Invoked
 
-Registered as a Claude Code custom slash command: `/audit`. When invoked, it reads `.claude/fencepost-audit.jsonl` and outputs a markdown analysis.
+Registered as a Claude Code custom slash command: `/audit`. When invoked, it reads `.claude/fencepost/logs/audit.jsonl` and outputs a markdown analysis.
 
 ## Entry Point
 
 `src/audit/skill.ts` - separate from the hook entry point. Can be run as:
 ```
-bun run src/audit/skill.ts [--path .claude/fencepost-audit.jsonl]
+bun run src/audit/skill.ts [--path .claude/fencepost/logs/audit.jsonl]
 ```
 
 ## Analysis Outputs

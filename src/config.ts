@@ -1,5 +1,5 @@
 import { load as yamlLoad } from "js-yaml";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { homedir } from "node:os";
 import { logger } from "./logger.js";
 import type {
@@ -145,9 +145,75 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
   };
 }
 
+// ---- Imports (bundled presets) ----
+
+// Preset names are bare identifiers, never paths. This prevents an `import`
+// entry from reaching outside the presets directory.
+const PRESET_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+
+/** Extract the top-level `import:` list from raw parsed YAML. */
+function extractImports(raw: unknown): string[] {
+  if (typeof raw !== "object" || raw === null) return [];
+  const imp = (raw as Record<string, unknown>)["import"];
+  if (!Array.isArray(imp)) return [];
+  return imp.filter((s): s is string => typeof s === "string");
+}
+
+/** Directories searched, in order, for a named preset. */
+function presetSearchDirs(): string[] {
+  const dirs: string[] = [];
+  const envDir = process.env["FENCEPOST_PRESETS_DIR"];
+  if (envDir) dirs.push(envDir);
+  // Relative to the compiled binary: bin/fencepost -> ../presets
+  try {
+    dirs.push(join(dirname(process.execPath), "..", "presets"));
+  } catch {
+    /* process.execPath unavailable; ignore */
+  }
+  // Relative to source during development: src/ -> ../presets
+  dirs.push(join(import.meta.dir, "..", "presets"));
+  return dirs;
+}
+
+/** Resolve a preset name to an on-disk YAML path, or null if not found. */
+async function resolvePreset(name: string): Promise<string | null> {
+  if (!PRESET_NAME_RE.test(name)) {
+    logger.warn({ name }, "invalid preset name in import (must be a bare identifier), skipping");
+    return null;
+  }
+  for (const dir of presetSearchDirs()) {
+    for (const ext of [".yaml", ".yml"]) {
+      const candidate = join(dir, name + ext);
+      if (await Bun.file(candidate).exists()) return candidate;
+    }
+  }
+  logger.warn({ name, searched: presetSearchDirs() }, "imported preset not found, skipping");
+  return null;
+}
+
+/**
+ * Load and merge the named presets into a single base config. Presets are
+ * merged in listed order; nested imports inside a preset are ignored.
+ */
+async function loadImports(names: string[]): Promise<{ config: FencepostConfig; sources: string[] }> {
+  let merged = DEFAULT_CONFIG;
+  const sources: string[] = [];
+  for (const name of names) {
+    const path = await resolvePreset(name);
+    if (!path) continue;
+    const loaded = await loadYamlFile(path);
+    if (!loaded) continue;
+    merged = mergeConfigs(merged, loaded.config);
+    sources.push(path);
+  }
+  return { config: merged, sources };
+}
+
 // ---- File loading ----
 
-async function loadYamlFile(filePath: string): Promise<FencepostConfig | null> {
+async function loadYamlFile(
+  filePath: string,
+): Promise<{ config: FencepostConfig; imports: string[] } | null> {
   try {
     const text = await Bun.file(filePath).text();
     const raw = yamlLoad(text);
@@ -157,14 +223,16 @@ async function loadYamlFile(filePath: string): Promise<FencepostConfig | null> {
       return null;
     }
     logger.debug({ file: filePath }, "loaded config file");
-    return config;
+    return { config, imports: extractImports(raw) };
   } catch (err) {
     logger.warn({ file: filePath, err }, "failed to read/parse config file");
     return null;
   }
 }
 
-async function loadConfDir(dirPath: string): Promise<{ config: FencepostConfig; sources: string[] } | null> {
+async function loadConfDir(
+  dirPath: string,
+): Promise<{ config: FencepostConfig; sources: string[]; imports: string[] } | null> {
   let entries: string[];
   try {
     const { readdir } = await import("node:fs/promises");
@@ -182,16 +250,18 @@ async function loadConfDir(dirPath: string): Promise<{ config: FencepostConfig; 
 
   let merged = DEFAULT_CONFIG;
   const sources: string[] = [];
+  const imports: string[] = [];
 
   for (const file of yamlFiles) {
-    const cfg = await loadYamlFile(file);
-    if (cfg) {
-      merged = mergeConfigs(merged, cfg);
+    const loaded = await loadYamlFile(file);
+    if (loaded) {
+      merged = mergeConfigs(merged, loaded.config);
       sources.push(file);
+      imports.push(...loaded.imports);
     }
   }
 
-  return sources.length > 0 ? { config: merged, sources } : null;
+  return sources.length > 0 ? { config: merged, sources, imports } : null;
 }
 
 // ---- Public API ----
@@ -205,6 +275,9 @@ async function loadConfDir(dirPath: string): Promise<{ config: FencepostConfig; 
  * 3. ~/.claude/fencepost/config/    — user-level conf.d
  * 4. ~/.claude/fencepost.yaml       — user-level single file
  * 5. Default config (fail-open)
+ *
+ * Any `import:` entries in the resolved config pull in bundled presets, which
+ * are merged as the base (so the user's own rules layer on top of them).
  */
 export async function resolveConfig(cwd: string): Promise<ResolvedConfig> {
   const home = homedir();
@@ -215,24 +288,36 @@ export async function resolveConfig(cwd: string): Promise<ResolvedConfig> {
     { confDir: join(home, ".claude", "fencepost", "config"), singleFile: join(home, ".claude", "fencepost.yaml") },
   ];
 
+  let host: { config: FencepostConfig; sources: string[]; imports: string[] } | null = null;
+
   for (const { confDir, singleFile } of candidates) {
     // Try conf.d directory first
     const dirResult = await loadConfDir(confDir);
     if (dirResult) {
-      logger.info({ sources: dirResult.sources }, "config loaded from directory");
-      return { ...dirResult.config, _sources: dirResult.sources };
+      host = dirResult;
+      break;
     }
 
     // Fall back to single file
     if (await Bun.file(singleFile).exists()) {
-      const cfg = await loadYamlFile(singleFile);
-      if (cfg) {
-        logger.info({ source: singleFile }, "config loaded from single file");
-        return { ...cfg, _sources: [singleFile] };
+      const loaded = await loadYamlFile(singleFile);
+      if (loaded) {
+        host = { config: loaded.config, sources: [singleFile], imports: loaded.imports };
+        break;
       }
     }
   }
 
-  logger.warn({ cwd }, "no config found, using defaults");
-  return { ...DEFAULT_CONFIG, _sources: [] };
+  if (!host) {
+    logger.warn({ cwd }, "no config found, using defaults");
+    return { ...DEFAULT_CONFIG, _sources: [] };
+  }
+
+  // Merge imported presets as the base, then layer the user's own rules on top.
+  const presets = await loadImports(host.imports);
+  const finalConfig = mergeConfigs(presets.config, host.config);
+  const sources = [...presets.sources, ...host.sources];
+
+  logger.info({ sources, imports: host.imports }, "config resolved");
+  return { ...finalConfig, _sources: sources };
 }

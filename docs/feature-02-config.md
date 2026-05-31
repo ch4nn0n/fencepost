@@ -2,7 +2,7 @@
 
 ## Summary
 
-Load, parse, validate, and merge YAML configuration files. Supports both a conf.d directory (`.claude/fencepost/`) and a single-file fallback (`.claude/fencepost.yaml`). See also `feature-09-composable-config.md` for full conf.d merge semantics.
+Load, parse, validate, and merge YAML configuration files. Supports both a conf.d directory (`.claude/fencepost/`) and a single-file fallback (`.claude/fencepost.yaml`). See also `feature-09-composable-config.md` for full conf.d merge semantics, and `feature-13-imports.md` for pulling in bundled presets via `import:`.
 
 ## Config Resolution Order
 
@@ -15,6 +15,12 @@ The `cwd` comes from the hook input JSON.
 ## YAML Schema
 
 ```yaml
+# Optional: pull in bundled preset rule sets by name (see feature-13-imports.md).
+# Presets are merged as the base; rules below layer on top.
+import:
+  - git
+  - kubernetes
+
 # Default decision for tools/commands that match no rule.
 # One of: allow, deny, ask
 default: ask

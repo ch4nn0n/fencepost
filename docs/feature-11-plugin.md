@@ -35,7 +35,7 @@ fencepost/
         "hooks": [
           {
             "type": "command",
-            "command": "{{PLUGIN_DIR}}/bin/fencepost evaluate",
+            "command": "{{PLUGIN_DIR}}/hooks/pre-tool-use.sh",
             "timeout": 5
           }
         ]
@@ -67,7 +67,7 @@ The binary supports subcommands:
 fencepost evaluate
 
 # Audit mode - reads log, prints analysis
-fencepost audit [--path .claude/fencepost-audit.jsonl]
+fencepost audit [--path .claude/fencepost/logs/audit.jsonl]
 
 # Config validation - loads and prints resolved config
 fencepost config [--cwd /path/to/project]
@@ -75,10 +75,10 @@ fencepost config [--cwd /path/to/project]
 
 ## Hook Wrapper (`hooks/pre-tool-use.sh`)
 
-Thin shell wrapper in case the plugin system needs a script rather than a direct binary:
+The manifest points at this thin shell wrapper rather than the binary directly. The wrapper resolves the binary relative to its own location, so the plugin works regardless of where it is installed:
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 exec "$(dirname "$0")/../bin/fencepost" evaluate
 ```
 

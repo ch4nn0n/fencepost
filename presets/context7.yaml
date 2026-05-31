@@ -1,0 +1,15 @@
+# Fencepost preset: context7 (MCP)
+#
+# Import with:
+#   import:
+#     - context7
+#
+# Context7 exposes read-only documentation lookup tools
+# (resolve-library-id, query-docs / get-library-docs). They don't touch the
+# filesystem or network state beyond fetching docs, so they are safe to allow
+# silently. The glob matches the tool names regardless of how the MCP server
+# is namespaced in your install.
+
+tools:
+  allow:
+    - "mcp__*context7*"

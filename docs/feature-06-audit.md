@@ -2,7 +2,7 @@
 
 ## Summary
 
-Append a JSONL entry for every tool evaluation to `.claude/fencepost-audit.jsonl`. The audit log enables the `/audit` skill to analyse patterns and suggest config improvements.
+Append a JSONL entry for every tool evaluation to `.claude/fencepost/logs/audit.jsonl`. The audit log enables the `/audit` skill to analyse patterns and suggest config improvements.
 
 ## Interface
 
@@ -12,7 +12,7 @@ function writeAuditEntry(entry: AuditEntry, logPath: string): Promise<void>;
 
 ## Log Location
 
-Same directory as the config: `.claude/fencepost-audit.jsonl` relative to the project root (resolved from the hook input's `cwd`).
+Under the fencepost data dir: `.claude/fencepost/logs/audit.jsonl` relative to the project root (resolved from the hook input's `cwd`). The `logs/` directory is created on first write.
 
 ## Entry Schema
 
