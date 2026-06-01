@@ -1,4 +1,5 @@
 import { splitCommandDetailed, hasSequencing } from "./bash/split.js";
+import { stripControlFlow } from "./bash/control-flow.js";
 import { normaliseCommand } from "./bash/normalise.js";
 import { evaluateBash } from "./bash/evaluate.js";
 import { matchTool } from "./tool-matcher.js";
@@ -33,7 +34,12 @@ export function evaluate(input: HookInput, config: FencepostConfig): EvalResult 
     return { decision: config.default, reason: "Empty command; using default", matchedInput: "" };
   }
 
-  const { parts, operators } = splitCommandDetailed(rawCommand);
+  // Strip loop/conditional scaffolding so body commands are evaluated against
+  // the normal rules (and a loop is not mistaken for a chain of commands).
+  const { command: bodyCommand, wasControlFlow } = stripControlFlow(rawCommand);
+  if (wasControlFlow) logger.debug({ rawCommand, bodyCommand }, "stripped control flow");
+
+  const { parts, operators } = splitCommandDetailed(bodyCommand);
   logger.debug({ rawCommand, parts, operators }, "split command");
 
   const results = parts.map((part) => {
@@ -67,6 +73,7 @@ export function evaluate(input: HookInput, config: FencepostConfig): EvalResult 
   // single data-flow operation and are left alone, as are all-allow chains.
   if (
     config.tools.bash.discourageChaining === true &&
+    !wasControlFlow &&
     winner.decision === "ask" &&
     hasSequencing(operators)
   ) {

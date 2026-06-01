@@ -6,6 +6,8 @@ When a Bash command joins multiple steps with **sequencing** operators (`&&`, `|
 
 This builds on compound splitting (`feature-08`), which already evaluates each sub-command and steers Claude to split on a *denial*. Feature 17 closes the gap for the `ask` case.
 
+> Loops and conditionals are exempt: `feature-18-control-flow.md` strips their scaffolding before this runs, and a detected control-flow construct short-circuits the chaining conversion (a loop is one unit, not a chain to split).
+
 ## Why sequencing only (not pipes)
 
 A pipe (`a | b`) is a single data-flow operation; splitting it into separate calls changes its meaning. So pipes are **exempt** — they are still split for evaluation (security), but a pipe alone never triggers the chaining deny. Only `&&`, `||`, and `;` do.

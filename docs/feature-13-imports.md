@@ -69,3 +69,6 @@ Imported preset paths are recorded in `ResolvedConfig._sources`, listed before t
 | `helmfile` | Allows diff/template/lint; asks before apply/sync; denies `helmfile destroy`. |
 | `ansible` | Normalises inventory/connection flags; allows read-only tooling; asks before playbook runs; denies ad-hoc shell/command/raw modules. |
 | `context7` | Allows the read-only Context7 MCP doc-lookup tools (`mcp__*context7*`). |
+| `claude` | Allows Claude's built-in tools (file tools incl.; web omitted); enables `/tmp` → `/tmp/claude` redirect and sandbox-scoped destructive ops. See `feature-16`. |
+| `claude-web` | Allows the network built-ins `WebFetch` and `WebSearch` that `claude` omits. |
+| `filesystem` | Allows read-only/inspection shell commands (ls, cat, grep, find, jq, …); guards `find -delete/-exec` and `sed -i`. |

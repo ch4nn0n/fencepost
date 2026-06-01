@@ -1,0 +1,18 @@
+# Fencepost preset: claude-web
+#
+# Import with:
+#   import:
+#     - claude-web
+#
+# Allows Claude Code's network-reaching built-in tools. The base `claude` preset
+# intentionally leaves these to your `default` decision because they fetch from
+# external services; import this preset when you want them allowed silently.
+#
+# These are the only built-in tools the `claude` preset omits. (MCP server tools
+# such as authentication helpers are environment-specific and are not allowed
+# here — authentication should stay user-initiated.)
+
+tools:
+  allow:
+    - WebFetch
+    - WebSearch

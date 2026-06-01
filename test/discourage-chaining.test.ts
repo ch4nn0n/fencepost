@@ -70,4 +70,27 @@ describe("discourageChaining", () => {
     expect(r.decision).toBe("deny");
     expect(r.chained).toBeUndefined(); // denied by rule, not by the chaining policy
   });
+
+  describe("loops (control flow)", () => {
+    it("does not chain-deny a benign loop; evaluates its body", () => {
+      // body is `echo $f` which is allowed -> whole loop allowed (not a chained deny)
+      const r = evaluate(bash("for f in a b; do echo $f; done"), makeConfig(true));
+      expect(r.decision).toBe("allow");
+      expect(r.chained).toBeUndefined();
+    });
+
+    it("denies a loop whose body is denied", () => {
+      const cfg = makeConfig(true);
+      cfg.tools.bash.deny = ["rm -rf"];
+      const r = evaluate(bash("for f in *.txt; do rm -rf /data/$f; done"), cfg);
+      expect(r.decision).toBe("deny");
+      expect(r.chained).toBeUndefined(); // denied by the rm rule, not the chaining policy
+    });
+
+    it("asks for a loop whose body needs approval (no misleading chain deny)", () => {
+      const r = evaluate(bash("for f in a b; do git push $f; done"), makeConfig(true));
+      expect(r.decision).toBe("ask");
+      expect(r.chained).toBeUndefined();
+    });
+  });
 });

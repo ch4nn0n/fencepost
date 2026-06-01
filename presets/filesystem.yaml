@@ -1,0 +1,84 @@
+# Fencepost preset: filesystem
+#
+# Import with:
+#   import:
+#     - filesystem
+#
+# Read-only / inspection shell commands: directory listing, file viewing, and
+# text processing. Mutating commands (rm, mv, cp, mkdir, chmod, chown, ln, ...)
+# are deliberately excluded — they belong to the `claude` sandbox or a
+# tool-specific policy, not a "safe basics" set.
+#
+# Borderline tools (find, sed) are allowed but their destructive flags are
+# denied via checks.
+#
+# Limitation: this is prefix matching, and shell output redirection (>, >>) is
+# NOT parsed. `echo x > /etc/hosts` would still match the `echo` allow and write
+# a file. Keep destructive-write rules in place if that matters to you.
+
+tools:
+  bash:
+    checks:
+      - test: '\bfind\b.*\s-(delete|exec|execdir|ok|okdir)\b'
+        description: "find with -delete or -exec runs destructive actions across every match."
+        alternative: "List matches first (find ... -print), then act on the specific paths you mean."
+      - test: '\bsed\b.*\s(-i|--in-place)\b'
+        description: "sed -i edits files in place."
+        alternative: "Run sed without -i to preview the output, then write the result explicitly."
+
+    allow:
+      # Navigation / listing
+      - ls
+      - pwd
+      - cd
+      - tree
+      - find
+      - du
+      - df
+      - realpath
+      - readlink
+      - basename
+      - dirname
+      # Viewing
+      - cat
+      - head
+      - tail
+      - less
+      - more
+      - wc
+      - stat
+      - file
+      - nl
+      # Text processing
+      - grep
+      - egrep
+      - fgrep
+      - rg
+      - diff
+      - cmp
+      - comm
+      - sort
+      - uniq
+      - cut
+      - tr
+      - tac
+      - rev
+      - column
+      - fold
+      - fmt
+      - jq
+      - yq
+      - awk
+      - sed
+      # Misc read-only info
+      - echo
+      - printf
+      - which
+      - type
+      - env
+      - printenv
+      - date
+      - hostname
+      - whoami
+      - id
+      - uname
