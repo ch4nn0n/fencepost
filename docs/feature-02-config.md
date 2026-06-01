@@ -25,6 +25,18 @@ import:
 # One of: allow, deny, ask
 default: ask
 
+# Optional: guidance injected at session start (see feature-14-session-guidance.md).
+guidance:
+  enabled: true
+  includeDefaults: true
+  extra:
+    - "Use bun, not npm, in this repo."
+
+# Optional: rewrite /tmp paths to a sandbox dir (see feature-15-claude-files.md).
+redirect:
+  tmp: true
+  tmpTarget: /tmp/claude
+
 tools:
   # Tools to always deny. Objects with metadata.
   deny:
@@ -59,12 +71,21 @@ tools:
         description: "Recursive delete is dangerous"
         alternative: "Delete specific files individually"
 
+    # Regex "smart allow" — matches the whole command, so a $-anchored pattern
+    # can confine an allow to a sandbox path (see feature-15-claude-files.md).
+    allowChecks:
+      - '^rm\s+(-\S+\s+)*/tmp/claude(/\S*)?$'
+
     ask:
       - "git push"
 
     allow:
       - "ls"
       - "git status"
+
+    # Deny a sequenced chain that would need approval, asking Claude to run the
+    # steps separately (see feature-17-discourage-chaining.md). Default: true.
+    discourageChaining: true
 ```
 
 ## TypeScript Types
@@ -80,6 +101,8 @@ interface FencepostConfig {
     allow: string[];
     bash: BashConfig;
   };
+  guidance?: GuidanceConfig;   // feature 14
+  redirect?: RedirectConfig;   // feature 15
 }
 
 interface ToolDenyRule {
@@ -92,8 +115,21 @@ interface BashConfig {
   normalise: NormaliseRule[];
   deny: string[];
   checks: BashCheck[];
+  allowChecks?: string[];      // regex "smart allow" (feature 15)
   ask: string[];
   allow: string[];
+  discourageChaining?: boolean; // feature 17, default true
+}
+
+interface GuidanceConfig {
+  enabled: boolean;            // default true
+  includeDefaults: boolean;    // default true
+  extra: string[];
+}
+
+interface RedirectConfig {
+  tmp: boolean;                // default false (claude preset enables)
+  tmpTarget: string;           // default "/tmp/claude"
 }
 
 interface NormaliseRule {
@@ -115,7 +151,8 @@ interface BashCheck {
 - `bash` section is optional (defaults to empty sub-sections)
 - `deny` entries must have `tool` and `description` fields
 - `checks` entries must have `test` and `description` fields
-- Regex patterns in `checks` and `normalise.strip` must be valid RegExp
+- Regex patterns in `checks`, `allowChecks`, and `normalise.strip` must be valid RegExp (invalid ones are skipped)
+- `guidance` and `redirect` are block-level last-wins; `bash.discourageChaining` is a scalar that only overrides when explicitly set
 
 ## Edge Cases
 

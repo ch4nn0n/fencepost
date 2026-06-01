@@ -60,6 +60,8 @@ Decision precedence: **deny > ask > allow**
 
 If any sub-command is denied, the whole compound is denied. The reason should reference the specific sub-command that triggered the deny.
 
+> Note: `feature-17-discourage-chaining.md` builds on this. When enabled, a chain joined by sequencing operators (`&&`, `||`, `;`) that resolves to `ask` is instead denied with guidance to run the steps separately. The splitter also reports the joining operators (`splitCommandDetailed`) so pipes can be distinguished from sequencing.
+
 ## Examples
 
 | Command | Parts | Result |

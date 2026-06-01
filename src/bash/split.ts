@@ -1,3 +1,20 @@
+export type CompoundOperator = "&&" | "||" | "|" | ";";
+
+export interface SplitResult {
+  /** The individual sub-commands, trimmed. */
+  parts: string[];
+  /** The operators that joined the parts, in order. */
+  operators: CompoundOperator[];
+}
+
+/** Operators that sequence independent commands (as opposed to a `|` data pipe). */
+const SEQUENCING_OPERATORS: ReadonlySet<CompoundOperator> = new Set(["&&", "||", ";"]);
+
+/** True if any part was joined by a sequencing operator (&&, ||, ;), ignoring pipes. */
+export function hasSequencing(operators: CompoundOperator[]): boolean {
+  return operators.some((op) => SEQUENCING_OPERATORS.has(op));
+}
+
 /**
  * Split a shell command on compound operators: &&, ||, |, ;
  *
@@ -6,12 +23,30 @@
  * Treats $(...) content as opaque (doesn't split inside subshells).
  */
 export function splitCommand(command: string): string[] {
+  return splitCommandDetailed(command).parts;
+}
+
+/**
+ * Like {@link splitCommand}, but also reports which operator joined each part.
+ */
+export function splitCommandDetailed(command: string): SplitResult {
   const parts: string[] = [];
+  const operators: CompoundOperator[] = [];
   let current = "";
   let i = 0;
   let inSingle = false;
   let inDouble = false;
   let subshellDepth = 0;
+
+  // Record the segment accumulated so far, tagged with the operator that ends it.
+  const pushPart = (op: CompoundOperator) => {
+    const trimmed = current.trim();
+    if (trimmed) {
+      parts.push(trimmed);
+      operators.push(op);
+    }
+    current = "";
+  };
 
   while (i < command.length) {
     const ch = command[i]!;
@@ -75,17 +110,13 @@ export function splitCommand(command: string): string[] {
     // Check for compound operators
     const twoChar = command.slice(i, i + 2);
     if (twoChar === "&&" || twoChar === "||") {
-      const trimmed = current.trim();
-      if (trimmed) parts.push(trimmed);
-      current = "";
+      pushPart(twoChar);
       i += 2;
       continue;
     }
 
     if (ch === "|" || ch === ";") {
-      const trimmed = current.trim();
-      if (trimmed) parts.push(trimmed);
-      current = "";
+      pushPart(ch);
       i++;
       continue;
     }
@@ -94,8 +125,18 @@ export function splitCommand(command: string): string[] {
     i++;
   }
 
+  // The final segment has no trailing operator; its operator slot is dropped so
+  // that `operators` describes the joins between parts, not a trailing token.
   const trimmed = current.trim();
-  if (trimmed) parts.push(trimmed);
+  if (trimmed) {
+    parts.push(trimmed);
+  } else if (operators.length > 0) {
+    // We pushed an operator for a boundary whose right-hand side was empty
+    // (e.g. a trailing ";"); drop that dangling operator.
+    operators.pop();
+  }
 
-  return parts.length > 0 ? parts : [command];
+  if (parts.length === 0) return { parts: [command], operators: [] };
+  // operators should describe the joins between parts: at most parts.length - 1.
+  return { parts, operators: operators.slice(0, parts.length - 1) };
 }

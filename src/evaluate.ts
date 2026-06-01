@@ -1,4 +1,4 @@
-import { splitCommand } from "./bash/split.js";
+import { splitCommandDetailed, hasSequencing } from "./bash/split.js";
 import { normaliseCommand } from "./bash/normalise.js";
 import { evaluateBash } from "./bash/evaluate.js";
 import { matchTool } from "./tool-matcher.js";
@@ -33,8 +33,8 @@ export function evaluate(input: HookInput, config: FencepostConfig): EvalResult 
     return { decision: config.default, reason: "Empty command; using default", matchedInput: "" };
   }
 
-  const parts = splitCommand(rawCommand);
-  logger.debug({ rawCommand, parts }, "split command");
+  const { parts, operators } = splitCommandDetailed(rawCommand);
+  logger.debug({ rawCommand, parts, operators }, "split command");
 
   const results = parts.map((part) => {
     const normalised = normaliseCommand(part, config.tools.bash.normalise);
@@ -59,6 +59,25 @@ export function evaluate(input: HookInput, config: FencepostConfig): EvalResult 
   // If compound and winner wasn't from the whole command, add compound metadata
   if (parts.length > 1 && !winner.isCompound) {
     winner.isCompound = true;
+  }
+
+  // Discourage chaining: when enabled, a sequenced chain (&&, ||, ;) that would
+  // merely require approval is instead denied with guidance to run the parts as
+  // separate tool calls, so each can be reviewed on its own. Pipes (|) are a
+  // single data-flow operation and are left alone, as are all-allow chains.
+  if (
+    config.tools.bash.discourageChaining === true &&
+    winner.decision === "ask" &&
+    hasSequencing(operators)
+  ) {
+    logger.info({ tool: "Bash", command: rawCommand }, "discouraging chained ask -> deny");
+    return {
+      decision: "deny",
+      reason: "Chained commands that need approval should be run separately",
+      matchedInput: rawCommand,
+      isCompound: true,
+      chained: true,
+    };
   }
 
   logger.info({

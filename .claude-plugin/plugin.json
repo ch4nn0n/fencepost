@@ -13,6 +13,17 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PLUGIN_DIR}}/hooks/session-start.sh",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "skills": [

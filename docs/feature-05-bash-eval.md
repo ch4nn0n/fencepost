@@ -16,7 +16,7 @@ function evaluateBash(
 
 ## Evaluation Pipeline
 
-Tier precedence: **deny > checks > ask > allow > default**
+Tier precedence: **deny > checks > allowChecks > ask > allow > default**
 
 ### 1. Deny List (prefix match)
 
@@ -34,15 +34,23 @@ Checks are "smart deny" - they always produce deny decisions but carry rich meta
 
 If matched: return `{ decision: "deny", reason: check.description, alternative: check.alternative }`
 
-### 3. Ask List (prefix match)
+### 3. Allow Checks (regex match)
+
+For each entry in `bash.allowChecks`, test the regex against the full normalised command. These are "smart allow" rules: the mirror image of `checks`. Because they match the whole command (not a prefix), a `$`-anchored pattern can confine an allow to a single path, e.g. confining destructive ops to a sandbox dir (see `feature-15-claude-files.md`).
+
+They sit **above** `ask`/`allow` so an explicit regex exception wins over a broader ask rule, but **below** `deny`/`checks` so a denial is never bypassed.
+
+If matched: return `{ decision: "allow" }`. Invalid regexes are skipped.
+
+### 4. Ask List (prefix match)
 
 Same prefix matching as deny. If matched: return `{ decision: "ask", reason: "Command requires approval: <rule>" }`
 
-### 4. Allow List (prefix match)
+### 5. Allow List (prefix match)
 
 Same prefix matching. If matched: return `{ decision: "allow" }`
 
-### 5. Default
+### 6. Default
 
 If no rule matches: return `{ decision: config.default }`
 

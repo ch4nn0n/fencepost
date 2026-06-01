@@ -6,6 +6,8 @@ import { formatOutput } from "./output.js";
 import { buildAuditEntry, writeAuditEntry } from "./audit/logger.js";
 import { logger } from "./logger.js";
 import { normaliseCommand } from "./bash/normalise.js";
+import { redirectToolInput } from "./redirect.js";
+import { buildGuidance } from "./guidance.js";
 
 // Enable verbose logging if --verbose flag is passed
 if (process.argv.includes("--verbose")) {
@@ -25,8 +27,13 @@ switch (subcommand) {
   case "config":
     await runConfig();
     break;
+  case "sessionstart":
+    await runSessionStart();
+    break;
   default:
-    process.stderr.write(`Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|audit|config] [--verbose]\n`);
+    process.stderr.write(
+      `Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|sessionstart|audit|config] [--verbose]\n`,
+    );
     process.exit(1);
 }
 
@@ -42,12 +49,22 @@ async function runEvaluate(): Promise<void> {
     }
 
     const config = await resolveConfig(input.cwd);
-    const result = evaluate(input, config);
+
+    // Redirect /tmp paths to the sandbox dir (if enabled) BEFORE evaluating, so
+    // rules and the audit log see the path the tool will actually use.
+    const { input: effectiveInput, changed } = redirectToolInput(
+      input.tool_name,
+      input.tool_input as Record<string, unknown>,
+      config,
+    );
+    const evalInput = changed ? { ...input, tool_input: effectiveInput } : input;
+
+    const result = evaluate(evalInput, config);
 
     // Determine the normalised command for audit (if Bash)
     let normalisedCommand: string | undefined;
-    if (input.tool_name === "Bash") {
-      const raw = String((input.tool_input as Record<string, unknown>)["command"] ?? "");
+    if (evalInput.tool_name === "Bash") {
+      const raw = String((evalInput.tool_input as Record<string, unknown>)["command"] ?? "");
       normalisedCommand = normaliseCommand(raw, config.tools.bash.normalise);
       if (normalisedCommand === raw) normalisedCommand = undefined;
     }
@@ -57,14 +74,15 @@ async function runEvaluate(): Promise<void> {
       sessionId: input.session_id,
       toolUseId: input.tool_use_id,
       toolName: input.tool_name,
-      toolInput: input.tool_input as Record<string, unknown>,
+      toolInput: effectiveInput,
       result,
       normalisedCommand,
     });
     void writeAuditEntry(entry, input.cwd);
 
-    // Write decision to stdout
-    const output = formatOutput(result);
+    // Write decision to stdout. If we rewrote the input, surface it via
+    // updatedInput so the tool runs against the redirected path.
+    const output = formatOutput(result, changed ? effectiveInput : undefined);
     if (output) {
       process.stdout.write(JSON.stringify(output) + "\n");
     }
@@ -74,6 +92,35 @@ async function runEvaluate(): Promise<void> {
   } catch (err) {
     // Fail-open: any unhandled error should not block Claude
     logger.error({ err }, "unhandled error in evaluate, failing open");
+    process.exit(0);
+  }
+}
+
+// ---- sessionstart subcommand ----
+
+async function runSessionStart(): Promise<void> {
+  try {
+    const input = await readStdin();
+    // SessionStart hook input carries cwd; fall back to process.cwd().
+    const cwd = (input?.cwd as string | undefined) ?? process.cwd();
+    const config = await resolveConfig(cwd);
+
+    const context = buildGuidance(config);
+    if (!context) {
+      process.exit(0);
+    }
+
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: context,
+      },
+    };
+    process.stdout.write(JSON.stringify(output) + "\n");
+    process.exit(0);
+  } catch (err) {
+    // Fail-open: never block a session from starting.
+    logger.error({ err }, "unhandled error in sessionstart, emitting no guidance");
     process.exit(0);
   }
 }

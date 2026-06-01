@@ -40,11 +40,24 @@ fencepost/
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PLUGIN_DIR}}/hooks/session-start.sh",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "skills": ["skills/audit.md"]
 }
 ```
+
+The `SessionStart` hook injects guidance context (see `feature-14-session-guidance.md`).
 
 ## Compiled Binary
 
@@ -66,6 +79,9 @@ The binary supports subcommands:
 # Hook mode (default) - reads stdin, writes stdout
 fencepost evaluate
 
+# SessionStart mode - reads stdin, writes guidance context (feature 14)
+fencepost sessionstart
+
 # Audit mode - reads log, prints analysis
 fencepost audit [--path .claude/fencepost/logs/audit.jsonl]
 
@@ -73,13 +89,27 @@ fencepost audit [--path .claude/fencepost/logs/audit.jsonl]
 fencepost config [--cwd /path/to/project]
 ```
 
-## Hook Wrapper (`hooks/pre-tool-use.sh`)
+## Hook Wrappers (`hooks/*.sh`)
 
-The manifest points at this thin shell wrapper rather than the binary directly. The wrapper resolves the binary relative to its own location, so the plugin works regardless of where it is installed:
+The manifest points at thin shell wrappers rather than the binary directly. Each wrapper resolves the binary relative to its own location and exports `FENCEPOST_PRESETS_DIR` so bundled `import:` presets resolve, so the plugin works regardless of where it is installed.
+
+`hooks/pre-tool-use.sh`:
 
 ```bash
 #!/usr/bin/env bash
-exec "$(dirname "$0")/../bin/fencepost" evaluate
+HERE="$(dirname "$0")"
+export FENCEPOST_PRESETS_DIR="${FENCEPOST_PRESETS_DIR:-$HERE/../presets}"
+exec "$HERE/../bin/fencepost" evaluate
+```
+
+`hooks/session-start.sh` additionally prepares the temp sandbox dir (see `feature-15-claude-files.md`):
+
+```bash
+#!/usr/bin/env bash
+HERE="$(dirname "$0")"
+export FENCEPOST_PRESETS_DIR="${FENCEPOST_PRESETS_DIR:-$HERE/../presets}"
+mkdir -p /tmp/claude 2>/dev/null || true
+exec "$HERE/../bin/fencepost" sessionstart
 ```
 
 ## Audit Skill (`skills/audit.md`)

@@ -12,7 +12,8 @@ Define how `EvalResult` maps to the Claude Code `hookSpecificOutput` JSON. The g
     "hookEventName": "PreToolUse",
     "permissionDecision": "allow|deny|ask",
     "permissionDecisionReason": "shown to user (allow/ask) or Claude (deny)",
-    "additionalContext": "injected into Claude's context (optional)"
+    "additionalContext": "injected into Claude's context (optional)",
+    "updatedInput": { "...": "rewritten tool input (optional)" }
   }
 }
 ```
@@ -21,6 +22,7 @@ Key behaviours:
 - **deny**: `permissionDecisionReason` is shown **to Claude** (not the user). This is how we steer Claude toward alternatives.
 - **allow**: `permissionDecisionReason` is shown to the user. Keep it brief or omit.
 - **ask**: `permissionDecisionReason` is shown to the user as context for their approval decision.
+- **updatedInput**: when present, the tool runs against this rewritten input instead of the original. Used by the /tmp redirect (see `feature-15-claude-files.md`); applied on `allow`/`ask`, ignored on `deny`.
 
 ## Formatting by Decision Type
 
@@ -28,13 +30,14 @@ Key behaviours:
 
 No output needed. Exit 0 with empty stdout = allow. This is the fast path.
 
-For rules that explicitly match (not just default), optionally emit minimal output for audit purposes:
+The one exception is an allow whose input was rewritten by redirection: then fencepost must emit an explicit allow output to carry `updatedInput`, since empty stdout would lose the rewrite:
 
 ```json
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
-    "permissionDecision": "allow"
+    "permissionDecision": "allow",
+    "updatedInput": { "command": "rm -rf /tmp/claude/build" }
   }
 }
 ```

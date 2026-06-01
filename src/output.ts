@@ -1,9 +1,27 @@
 import type { EvalResult, HookOutput } from "./types.js";
 
-/** Format an EvalResult into the hookSpecificOutput JSON for Claude Code. */
-export function formatOutput(result: EvalResult): HookOutput | null {
-  // Fast path: allow — no output means allow
-  if (result.decision === "allow") return null;
+/**
+ * Format an EvalResult into the hookSpecificOutput JSON for Claude Code.
+ *
+ * `updatedInput`, when provided, is the rewritten tool input (e.g. /tmp paths
+ * redirected to the sandbox). It is surfaced so the tool runs against the new
+ * input on allow/ask. It is ignored on deny (the call won't run).
+ */
+export function formatOutput(
+  result: EvalResult,
+  updatedInput?: Record<string, unknown>,
+): HookOutput | null {
+  // Fast path: allow.
+  if (result.decision === "allow") {
+    if (!updatedInput) return null; // no output means allow
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        updatedInput,
+      },
+    };
+  }
 
   const output: HookOutput = {
     hookSpecificOutput: {
@@ -13,18 +31,30 @@ export function formatOutput(result: EvalResult): HookOutput | null {
     },
   };
 
+  if (result.decision === "ask" && updatedInput) {
+    output.hookSpecificOutput.updatedInput = updatedInput;
+  }
+
   if (result.decision === "deny") {
-    const contextParts: string[] = [
-      "The previous command was blocked by a fencepost permission rule.",
-      "Do not retry the same command.",
-    ];
-    if (result.alternative) {
-      contextParts.push("Use the suggested alternative approach.");
-    }
-    if (result.isCompound) {
+    const contextParts: string[] = [];
+    if (result.chained) {
       contextParts.push(
-        "Break compound commands into separate tool calls so each can be evaluated independently."
+        "The previous command chained multiple steps that would each need approval.",
+        "Run each step as its own Bash tool call so the user can review them individually.",
       );
+    } else {
+      contextParts.push(
+        "The previous command was blocked by a fencepost permission rule.",
+        "Do not retry the same command.",
+      );
+      if (result.alternative) {
+        contextParts.push("Use the suggested alternative approach.");
+      }
+      if (result.isCompound) {
+        contextParts.push(
+          "Break compound commands into separate tool calls so each can be evaluated independently.",
+        );
+      }
     }
     output.hookSpecificOutput.additionalContext = contextParts.join(" ");
   }
@@ -36,6 +66,9 @@ function formatReason(result: EvalResult): string {
   const prefix = "Fencepost:";
 
   if (result.decision === "deny") {
+    if (result.chained) {
+      return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
+    }
     if (result.isCompound && result.offendingPart) {
       let reason = `${prefix} blocked — compound command contains '${result.offendingPart}' which is not permitted (${result.reason}).`;
       if (result.alternative) {

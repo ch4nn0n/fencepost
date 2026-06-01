@@ -7,16 +7,23 @@ import type {
   ResolvedConfig,
   BashConfig,
   ToolsConfig,
+  GuidanceConfig,
+  RedirectConfig,
 } from "./types.js";
 
 // ---- Defaults ----
+
+// Command chaining is discouraged by default (feature 17).
+const DEFAULT_DISCOURAGE_CHAINING = true;
 
 const DEFAULT_BASH_CONFIG: BashConfig = {
   normalise: [],
   deny: [],
   checks: [],
+  allowChecks: [],
   ask: [],
   allow: [],
+  discourageChaining: DEFAULT_DISCOURAGE_CHAINING,
 };
 
 const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -26,9 +33,23 @@ const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
   bash: DEFAULT_BASH_CONFIG,
 };
 
+const DEFAULT_GUIDANCE_CONFIG: GuidanceConfig = {
+  enabled: true,
+  includeDefaults: true,
+  extra: [],
+};
+
+// /tmp redirection is opt-in at the core level; the `claude` preset turns it on.
+const DEFAULT_REDIRECT_CONFIG: RedirectConfig = {
+  tmp: false,
+  tmpTarget: "/tmp/claude",
+};
+
 export const DEFAULT_CONFIG: FencepostConfig = {
   default: "ask",
   tools: DEFAULT_TOOLS_CONFIG,
+  guidance: DEFAULT_GUIDANCE_CONFIG,
+  redirect: DEFAULT_REDIRECT_CONFIG,
 };
 
 // ---- Validation ----
@@ -92,6 +113,20 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   const bashDeny = ((bashRaw["deny"] ?? []) as unknown[]).filter((s): s is string => typeof s === "string");
   const bashAsk = ((bashRaw["ask"] ?? []) as unknown[]).filter((s): s is string => typeof s === "string");
   const bashAllow = ((bashRaw["allow"] ?? []) as unknown[]).filter((s): s is string => typeof s === "string");
+  const allowChecks = ((bashRaw["allowChecks"] ?? []) as unknown[]).filter((s): s is string => {
+    if (typeof s !== "string") return false;
+    try {
+      new RegExp(s);
+      return true;
+    } catch {
+      logger.warn({ source, pattern: s }, "bash.allowChecks entry has invalid regex, skipping");
+      return false;
+    }
+  });
+  // Left undefined when absent so a later file that omits it does not clobber
+  // an explicit setting; the default is applied via the merge against DEFAULT_CONFIG.
+  const discourageChaining =
+    typeof bashRaw["discourageChaining"] === "boolean" ? (bashRaw["discourageChaining"] as boolean) : undefined;
 
   const checks = ((bashRaw["checks"] ?? []) as unknown[])
     .filter((r): r is Record<string, unknown> => {
@@ -114,15 +149,41 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
       alternative: r["alternative"] !== undefined ? String(r["alternative"]) : undefined,
     }));
 
-  return {
+  // ---- guidance (block-level last-wins) ----
+  let guidance: GuidanceConfig | undefined;
+  const guidanceRaw = obj["guidance"];
+  if (typeof guidanceRaw === "object" && guidanceRaw !== null) {
+    const g = guidanceRaw as Record<string, unknown>;
+    guidance = {
+      enabled: typeof g["enabled"] === "boolean" ? g["enabled"] : true,
+      includeDefaults: typeof g["includeDefaults"] === "boolean" ? g["includeDefaults"] : true,
+      extra: Array.isArray(g["extra"]) ? g["extra"].filter((s): s is string => typeof s === "string") : [],
+    };
+  }
+
+  // ---- redirect (block-level last-wins) ----
+  let redirect: RedirectConfig | undefined;
+  const redirectRaw = obj["redirect"];
+  if (typeof redirectRaw === "object" && redirectRaw !== null) {
+    const r = redirectRaw as Record<string, unknown>;
+    redirect = {
+      tmp: typeof r["tmp"] === "boolean" ? r["tmp"] : false,
+      tmpTarget: typeof r["tmpTarget"] === "string" && r["tmpTarget"] ? r["tmpTarget"] : "/tmp/claude",
+    };
+  }
+
+  const result: FencepostConfig = {
     default: defaultDecision,
     tools: {
       deny,
       ask,
       allow,
-      bash: { normalise, deny: bashDeny, checks, ask: bashAsk, allow: bashAllow },
+      bash: { normalise, deny: bashDeny, checks, allowChecks, ask: bashAsk, allow: bashAllow, discourageChaining },
     },
   };
+  if (guidance) result.guidance = guidance;
+  if (redirect) result.redirect = redirect;
+  return result;
 }
 
 // ---- Merging ----
@@ -138,10 +199,16 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
         normalise: [...base.tools.bash.normalise, ...override.tools.bash.normalise],
         deny: [...base.tools.bash.deny, ...override.tools.bash.deny],
         checks: [...base.tools.bash.checks, ...override.tools.bash.checks],
+        allowChecks: [...(base.tools.bash.allowChecks ?? []), ...(override.tools.bash.allowChecks ?? [])],
         ask: [...base.tools.bash.ask, ...override.tools.bash.ask],
         allow: [...base.tools.bash.allow, ...override.tools.bash.allow],
+        // Scalar: override only when explicitly set, otherwise inherit the base.
+        discourageChaining: override.tools.bash.discourageChaining ?? base.tools.bash.discourageChaining,
       },
     },
+    // Block-level last-wins: an override that omits the block inherits the base.
+    guidance: override.guidance ?? base.guidance,
+    redirect: override.redirect ?? base.redirect,
   };
 }
 

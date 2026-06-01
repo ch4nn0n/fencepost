@@ -1,0 +1,45 @@
+# Fencepost preset: claude
+#
+# Import with:
+#   import:
+#     - claude
+#
+# Sane defaults for working with Claude Code itself:
+#  - Allow Claude's built-in tools so routine work doesn't prompt.
+#  - Redirect /tmp paths to a per-session sandbox (/tmp/claude) so scratch
+#    files are isolated and can be cleaned up with destructive permissions
+#    scoped to that directory (see feature-15-claude-files.md).
+#
+# WebFetch and WebSearch are intentionally NOT allow-listed; they reach
+# external services, so they fall through to your `default` decision.
+#
+# Note: `Bash` is intentionally absent. Fencepost always routes Bash through
+# the bash command pipeline, so listing it here would have no effect.
+
+# Rewrite /tmp -> /tmp/claude in tool inputs (Bash commands and file paths).
+redirect:
+  tmp: true
+  tmpTarget: /tmp/claude
+
+tools:
+  allow:
+    - Read
+    - Glob
+    - Grep
+    - Edit
+    - Write
+    - NotebookEdit
+    - TodoWrite
+    - Task
+    - ExitPlanMode
+    - BashOutput
+    - KillShell
+
+  bash:
+    # Destructive scratch operations are allowed only inside the sandbox.
+    # These are regex allows anchored with `$`, so a single target under
+    # /tmp/claude matches but a stray extra path (e.g. "rm -rf /tmp/claude/x /etc")
+    # does not. Commands with two paths (cp/mv) are intentionally excluded and
+    # fall through to your default decision.
+    allowChecks:
+      - '^(rm|rmdir|mkdir|touch|cat|ls|head|tail|stat|wc|file)\s+(-\S+\s+)*/tmp/claude(/\S*)?$'

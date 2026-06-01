@@ -66,6 +66,29 @@ describe("import directive", () => {
     expect(config._sources.some((s) => s.endsWith("does-not-exist.yaml"))).toBe(false);
   });
 
+  it("the claude preset enables /tmp redirect and allows built-in tools", async () => {
+    const tmp = await projectWithConfig("import:\n  - claude\ndefault: ask\n");
+    const config = await resolveConfig(tmp);
+    expect(config.redirect?.tmp).toBe(true);
+    expect(config.redirect?.tmpTarget).toBe("/tmp/claude");
+    expect(config.tools.allow).toContain("Read");
+    expect(config.tools.allow).toContain("Write");
+    expect(config.tools.allow).not.toContain("WebFetch");
+    expect(config.tools.allow).not.toContain("Bash");
+  });
+
+  it("defaults discourageChaining to true when unset", async () => {
+    const tmp = await projectWithConfig("default: ask\n");
+    const config = await resolveConfig(tmp);
+    expect(config.tools.bash.discourageChaining).toBe(true);
+  });
+
+  it("lets a user disable discourageChaining explicitly", async () => {
+    const tmp = await projectWithConfig("default: ask\ntools:\n  bash:\n    discourageChaining: false\n");
+    const config = await resolveConfig(tmp);
+    expect(config.tools.bash.discourageChaining).toBe(false);
+  });
+
   it("rejects path-traversal preset names", async () => {
     const tmp = await projectWithConfig('import:\n  - "../../../etc/passwd"\ndefault: ask\n');
     const config = await resolveConfig(tmp);

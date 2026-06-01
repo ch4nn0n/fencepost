@@ -5,7 +5,7 @@ import type { BashConfig, Decision, EvalResult } from "../types.js";
 /**
  * Evaluate a normalised bash command against bash-specific rules.
  *
- * Tier precedence: deny > checks > ask > allow > default
+ * Tier precedence: deny > checks > allowChecks > ask > allow > default
  */
 export function evaluateBash(
   normalisedCommand: string,
@@ -45,7 +45,26 @@ export function evaluateBash(
     }
   }
 
-  // 3. Ask list (prefix match)
+  // 3. Allow checks (regex — "smart allow", e.g. confine an op to a sandbox path).
+  //    These beat ask/allow so an explicit regex exception wins over a broader
+  //    ask rule, but deny/checks above still take precedence.
+  for (const pattern of bashConfig.allowChecks ?? []) {
+    try {
+      if (new RegExp(pattern).test(normalisedCommand)) {
+        logger.debug({ command: normalisedCommand, pattern }, "matched bash.allowChecks");
+        return {
+          decision: "allow",
+          reason: "Command allowed by rule",
+          matchedRule: `bash.allowChecks: ${pattern}`,
+          matchedInput: normalisedCommand,
+        };
+      }
+    } catch {
+      logger.warn({ pattern }, "invalid bash allowCheck regex, skipping");
+    }
+  }
+
+  // 4. Ask list (prefix match)
   for (const rule of bashConfig.ask) {
     if (prefixMatch(normalisedCommand, rule)) {
       logger.debug({ command: normalisedCommand, rule }, "matched bash.ask");
@@ -58,7 +77,7 @@ export function evaluateBash(
     }
   }
 
-  // 4. Allow list (prefix match)
+  // 5. Allow list (prefix match)
   for (const rule of bashConfig.allow) {
     if (prefixMatch(normalisedCommand, rule)) {
       logger.debug({ command: normalisedCommand, rule }, "matched bash.allow");
@@ -71,7 +90,7 @@ export function evaluateBash(
     }
   }
 
-  // 5. Default
+  // 6. Default
   logger.debug({ command: normalisedCommand, default: defaultDecision }, "no bash rule matched, using default");
   return {
     decision: defaultDecision,

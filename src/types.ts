@@ -25,8 +25,17 @@ export interface BashConfig {
   normalise: NormaliseRule[];
   deny: string[];
   checks: BashCheck[];
+  // Regex "smart allow" rules. Unlike the prefix `allow` list, these match the
+  // whole normalised command, so a $-anchored pattern can confine an allow to a
+  // single sandbox path (e.g. rm under /tmp/claude). Evaluated above ask/allow.
+  allowChecks?: string[];
   ask: string[];
   allow: string[];
+  // When true, a command joined by sequencing operators (&&, ;, ||) that would
+  // require approval is instead denied with guidance to run the parts as
+  // separate tool calls, so each can be approved on its own. Pipes (|) are
+  // exempt. Populated with a default by the config loader (feature 17).
+  discourageChaining?: boolean;
 }
 
 export interface ToolsConfig {
@@ -36,9 +45,26 @@ export interface ToolsConfig {
   bash: BashConfig;
 }
 
+// Guidance injected into Claude at session start (feature 14).
+export interface GuidanceConfig {
+  enabled: boolean; // emit SessionStart context at all
+  includeDefaults: boolean; // include fencepost's built-in guidance lines
+  extra: string[]; // additional lines appended after the defaults
+}
+
+// Tool-input redirection (feature 15). Currently scoped to /tmp -> a sandbox dir.
+export interface RedirectConfig {
+  tmp: boolean; // rewrite bare/prefixed /tmp paths to tmpTarget
+  tmpTarget: string; // destination dir, e.g. /tmp/claude
+}
+
 export interface FencepostConfig {
   default: Decision;
   tools: ToolsConfig;
+  // Optional sections; the config loader always populates them with defaults,
+  // but unit tests may construct a FencepostConfig without them.
+  guidance?: GuidanceConfig;
+  redirect?: RedirectConfig;
 }
 
 // Resolved config with provenance tracking
@@ -81,6 +107,7 @@ export interface EvalResult {
   matchedInput?: string; // the command/tool that matched
   offendingPart?: string; // for compound commands: the sub-command that triggered
   isCompound?: boolean;
+  chained?: boolean; // denied purely because chaining is discouraged (feature 17)
 }
 
 // ---- Audit types ----
