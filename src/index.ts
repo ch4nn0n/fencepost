@@ -59,7 +59,17 @@ async function runEvaluate(): Promise<void> {
     );
     const evalInput = changed ? { ...input, tool_input: effectiveInput } : input;
 
-    const result = evaluate(evalInput, config);
+    // SPIKE (feature 19): optional AST-backed Bash path. Falls back to the
+    // string pipeline if the parser is not selected or extraction fails.
+    let result;
+    if (evalInput.tool_name === "Bash" && config.tools.bash.parser === "ast") {
+      const command = String((effectiveInput as Record<string, unknown>)["command"] ?? "");
+      const { evaluateBashViaAst } = await import("./bash/evaluate-ast.js");
+      const astResult = command ? await evaluateBashViaAst(command, config) : null;
+      result = astResult ?? evaluate(evalInput, config);
+    } else {
+      result = evaluate(evalInput, config);
+    }
 
     // Determine the normalised command for audit (if Bash)
     let normalisedCommand: string | undefined;

@@ -36,6 +36,11 @@ export interface BashConfig {
   // separate tool calls, so each can be approved on its own. Pipes (|) are
   // exempt. Populated with a default by the config loader (feature 17).
   discourageChaining?: boolean;
+  // SPIKE (feature 19): "ast" routes Bash through the tree-sitter extractor;
+  // "string" (default) uses the split + control-flow-strip pipeline.
+  parser?: "ast" | "string";
+  // AST-only rule: deny output redirection to an absolute path outside the sandbox.
+  denyWritesOutsideSandbox?: boolean;
 }
 
 export interface ToolsConfig {

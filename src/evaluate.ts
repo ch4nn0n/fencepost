@@ -15,6 +15,65 @@ function mostRestrictive(results: EvalResult[]): EvalResult {
 }
 
 /**
+ * Evaluate an already-extracted list of sub-commands against the bash rules.
+ * Shared by the string pipeline (split + control-flow strip) and the AST
+ * pipeline (feature 19). `rawCommand` is the original for messages/audit;
+ * `hadSequencing` and `wasControlFlow` drive the discourage-chaining rule.
+ */
+export function evaluateBashParts(
+  parts: string[],
+  rawCommand: string,
+  hadSequencing: boolean,
+  wasControlFlow: boolean,
+  config: FencepostConfig,
+): EvalResult {
+  const results = parts.map((part) => {
+    const normalised = normaliseCommand(part, config.tools.bash.normalise);
+    const result = evaluateBash(normalised, config.tools.bash, config.default);
+
+    if (parts.length > 1) {
+      result.isCompound = true;
+      result.offendingPart = normalised;
+    }
+    if (normalised !== part) {
+      (result as EvalResult & { _normalisedPart: string })._normalisedPart = normalised;
+    }
+    return result;
+  });
+
+  const winner = mostRestrictive(results);
+
+  if (parts.length > 1 && !winner.isCompound) {
+    winner.isCompound = true;
+  }
+
+  // Discourage chaining: a sequenced chain (&&, ||, ;) that would merely require
+  // approval is instead denied with guidance to run the parts separately. Pipes
+  // and control-flow constructs are exempt.
+  if (
+    config.tools.bash.discourageChaining === true &&
+    !wasControlFlow &&
+    winner.decision === "ask" &&
+    hadSequencing
+  ) {
+    logger.info({ tool: "Bash", command: rawCommand }, "discouraging chained ask -> deny");
+    return {
+      decision: "deny",
+      reason: "Chained commands that need approval should be run separately",
+      matchedInput: rawCommand,
+      isCompound: true,
+      chained: true,
+    };
+  }
+
+  logger.info(
+    { tool: "Bash", command: rawCommand, decision: winner.decision, rule: winner.matchedRule },
+    "decision",
+  );
+  return winner;
+}
+
+/**
  * Top-level evaluator. Routes Bash tool calls through the bash pipeline
  * (with compound splitting + normalisation) and all other tools through
  * the tool name matcher.
@@ -42,57 +101,5 @@ export function evaluate(input: HookInput, config: FencepostConfig): EvalResult 
   const { parts, operators } = splitCommandDetailed(bodyCommand);
   logger.debug({ rawCommand, parts, operators }, "split command");
 
-  const results = parts.map((part) => {
-    const normalised = normaliseCommand(part, config.tools.bash.normalise);
-    const result = evaluateBash(normalised, config.tools.bash, config.default);
-
-    // Tag compound info onto the result
-    if (parts.length > 1) {
-      result.isCompound = true;
-      result.offendingPart = normalised;
-    }
-
-    // Attach normalised form if it differs from the raw part
-    if (normalised !== part) {
-      (result as EvalResult & { _normalisedPart: string })._normalisedPart = normalised;
-    }
-
-    return result;
-  });
-
-  const winner = mostRestrictive(results);
-
-  // If compound and winner wasn't from the whole command, add compound metadata
-  if (parts.length > 1 && !winner.isCompound) {
-    winner.isCompound = true;
-  }
-
-  // Discourage chaining: when enabled, a sequenced chain (&&, ||, ;) that would
-  // merely require approval is instead denied with guidance to run the parts as
-  // separate tool calls, so each can be reviewed on its own. Pipes (|) are a
-  // single data-flow operation and are left alone, as are all-allow chains.
-  if (
-    config.tools.bash.discourageChaining === true &&
-    !wasControlFlow &&
-    winner.decision === "ask" &&
-    hasSequencing(operators)
-  ) {
-    logger.info({ tool: "Bash", command: rawCommand }, "discouraging chained ask -> deny");
-    return {
-      decision: "deny",
-      reason: "Chained commands that need approval should be run separately",
-      matchedInput: rawCommand,
-      isCompound: true,
-      chained: true,
-    };
-  }
-
-  logger.info({
-    tool: "Bash",
-    command: rawCommand,
-    decision: winner.decision,
-    rule: winner.matchedRule,
-  }, "decision");
-
-  return winner;
+  return evaluateBashParts(parts, rawCommand, hasSequencing(operators), wasControlFlow, config);
 }

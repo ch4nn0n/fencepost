@@ -86,6 +86,11 @@ tools:
     # Deny a sequenced chain that would need approval, asking Claude to run the
     # steps separately (see feature-17-discourage-chaining.md). Default: true.
     discourageChaining: true
+
+    # Experimental (see feature-19-ast-spike.md): route Bash through the
+    # tree-sitter parser instead of the string splitter. Default: string.
+    parser: string            # or: ast
+    denyWritesOutsideSandbox: false  # ast-only redirection rule
 ```
 
 ## TypeScript Types

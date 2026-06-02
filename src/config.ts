@@ -24,6 +24,8 @@ const DEFAULT_BASH_CONFIG: BashConfig = {
   ask: [],
   allow: [],
   discourageChaining: DEFAULT_DISCOURAGE_CHAINING,
+  parser: "string",
+  denyWritesOutsideSandbox: false,
 };
 
 const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -127,6 +129,11 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   // an explicit setting; the default is applied via the merge against DEFAULT_CONFIG.
   const discourageChaining =
     typeof bashRaw["discourageChaining"] === "boolean" ? (bashRaw["discourageChaining"] as boolean) : undefined;
+  const parser = bashRaw["parser"] === "ast" || bashRaw["parser"] === "string" ? bashRaw["parser"] : undefined;
+  const denyWritesOutsideSandbox =
+    typeof bashRaw["denyWritesOutsideSandbox"] === "boolean"
+      ? (bashRaw["denyWritesOutsideSandbox"] as boolean)
+      : undefined;
 
   const checks = ((bashRaw["checks"] ?? []) as unknown[])
     .filter((r): r is Record<string, unknown> => {
@@ -178,7 +185,17 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
       deny,
       ask,
       allow,
-      bash: { normalise, deny: bashDeny, checks, allowChecks, ask: bashAsk, allow: bashAllow, discourageChaining },
+      bash: {
+        normalise,
+        deny: bashDeny,
+        checks,
+        allowChecks,
+        ask: bashAsk,
+        allow: bashAllow,
+        discourageChaining,
+        parser,
+        denyWritesOutsideSandbox,
+      },
     },
   };
   if (guidance) result.guidance = guidance;
@@ -202,8 +219,11 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
         allowChecks: [...(base.tools.bash.allowChecks ?? []), ...(override.tools.bash.allowChecks ?? [])],
         ask: [...base.tools.bash.ask, ...override.tools.bash.ask],
         allow: [...base.tools.bash.allow, ...override.tools.bash.allow],
-        // Scalar: override only when explicitly set, otherwise inherit the base.
+        // Scalars: override only when explicitly set, otherwise inherit the base.
         discourageChaining: override.tools.bash.discourageChaining ?? base.tools.bash.discourageChaining,
+        parser: override.tools.bash.parser ?? base.tools.bash.parser,
+        denyWritesOutsideSandbox:
+          override.tools.bash.denyWritesOutsideSandbox ?? base.tools.bash.denyWritesOutsideSandbox,
       },
     },
     // Block-level last-wins: an override that omits the block inherits the base.
