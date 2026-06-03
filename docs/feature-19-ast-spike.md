@@ -1,6 +1,8 @@
 # Feature 19: AST-based Bash Analysis (Spike)
 
-Status: **spike / experimental**, behind `tools.bash.parser: ast` (default `string`).
+Status: **implemented / promoted**. Bash is now always evaluated through the AST; the string pipeline (`split.ts`, `control-flow.ts`) and the `tools.bash.parser` flag have been removed. Parse failure fails open (allow). See `feature-20` (structured rules) and `feature-21` (nested interpreters) for what the parse unlocked.
+
+> The notes below are the original spike write-up, retained for the cold-start numbers and rationale.
 
 ## Goal
 

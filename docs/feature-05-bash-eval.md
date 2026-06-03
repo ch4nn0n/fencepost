@@ -14,6 +14,13 @@ function evaluateBash(
 ): EvalResult;
 ```
 
+> **Updated for the AST (features 19/20/21).** Bash is parsed by tree-sitter and
+> each extracted simple command is evaluated by this matcher. The structured
+> `arguments`/`redirects` rules (feature 20) and nested interpreter findings
+> (feature 21) participate in the same tiers below, bucketed by their `decision`:
+> deny-rules join tier 1, allow-rules join the allowChecks tier, ask-rules join
+> the ask tier. See `feature-20`/`feature-21` for the full ordering.
+
 ## Evaluation Pipeline
 
 Tier precedence: **deny > checks > allowChecks > ask > allow > default**

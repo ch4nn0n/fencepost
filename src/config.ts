@@ -9,6 +9,13 @@ import type {
   ToolsConfig,
   GuidanceConfig,
   RedirectConfig,
+  RedirectRule,
+  ArgumentRule,
+  CallRule,
+  WriteRule,
+  ImportRule,
+  InterpreterConfig,
+  Decision,
 } from "./types.js";
 
 // ---- Defaults ----
@@ -24,8 +31,9 @@ const DEFAULT_BASH_CONFIG: BashConfig = {
   ask: [],
   allow: [],
   discourageChaining: DEFAULT_DISCOURAGE_CHAINING,
-  parser: "string",
-  denyWritesOutsideSandbox: false,
+  redirects: [],
+  arguments: [],
+  interpreters: {},
 };
 
 const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -58,6 +66,163 @@ export const DEFAULT_CONFIG: FencepostConfig = {
 
 function isDecision(v: unknown): v is "allow" | "deny" | "ask" {
   return v === "allow" || v === "deny" || v === "ask";
+}
+
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+}
+
+function optStr(v: unknown): string | undefined {
+  return v !== undefined ? String(v) : undefined;
+}
+
+function validRegex(pattern: unknown, source: string, where: string): boolean {
+  try {
+    new RegExp(String(pattern));
+    return true;
+  } catch {
+    logger.warn({ source, pattern, where }, "invalid regex, skipping rule");
+    return false;
+  }
+}
+
+// ---- Structured bash rule parsers (features 20/21) ----
+
+function parseRedirectRules(raw: unknown, source: string): RedirectRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RedirectRule[] = [];
+  for (const r of raw) {
+    if (typeof r !== "object" || r === null) continue;
+    const o = r as Record<string, unknown>;
+    const mode = o["mode"];
+    if (mode !== "read" && mode !== "write" && mode !== "append" && mode !== "any") {
+      logger.warn({ source, rule: r }, "redirects: invalid mode, skipping");
+      continue;
+    }
+    if (!isDecision(o["decision"])) {
+      logger.warn({ source, rule: r }, "redirects: invalid decision, skipping");
+      continue;
+    }
+    const hasOutside = Array.isArray(o["outside"]);
+    const hasGlob = typeof o["glob"] === "string";
+    if (hasOutside === hasGlob) {
+      logger.warn({ source, rule: r }, "redirects: provide exactly one of outside/glob, skipping");
+      continue;
+    }
+    out.push({
+      mode,
+      decision: o["decision"] as Decision,
+      ...(hasOutside ? { outside: asStringArray(o["outside"]) } : { glob: String(o["glob"]) }),
+      description: optStr(o["description"]),
+      alternative: optStr(o["alternative"]),
+    });
+  }
+  return out;
+}
+
+function parseArgumentRules(raw: unknown, source: string): ArgumentRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ArgumentRule[] = [];
+  const predicates = ["anyArgOutside", "allArgsInside", "anyArgMatches", "allArgsMatch"] as const;
+  for (const r of raw) {
+    if (typeof r !== "object" || r === null) continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o["command"] !== "string") {
+      logger.warn({ source, rule: r }, "arguments: missing command, skipping");
+      continue;
+    }
+    if (!isDecision(o["decision"])) {
+      logger.warn({ source, rule: r }, "arguments: invalid decision, skipping");
+      continue;
+    }
+    const present = predicates.filter((k) => o[k] !== undefined);
+    if (present.length !== 1) {
+      logger.warn({ source, rule: r }, "arguments: provide exactly one predicate, skipping");
+      continue;
+    }
+    if (o["anyArgMatches"] !== undefined && !validRegex(o["anyArgMatches"], source, "arguments.anyArgMatches")) continue;
+    if (o["allArgsMatch"] !== undefined && !validRegex(o["allArgsMatch"], source, "arguments.allArgsMatch")) continue;
+    out.push({
+      command: o["command"],
+      decision: o["decision"] as Decision,
+      ...(o["anyArgOutside"] !== undefined ? { anyArgOutside: asStringArray(o["anyArgOutside"]) } : {}),
+      ...(o["allArgsInside"] !== undefined ? { allArgsInside: asStringArray(o["allArgsInside"]) } : {}),
+      ...(o["anyArgMatches"] !== undefined ? { anyArgMatches: String(o["anyArgMatches"]) } : {}),
+      ...(o["allArgsMatch"] !== undefined ? { allArgsMatch: String(o["allArgsMatch"]) } : {}),
+      description: optStr(o["description"]),
+      alternative: optStr(o["alternative"]),
+    });
+  }
+  return out;
+}
+
+function parseCallRules(raw: unknown, source: string): CallRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CallRule[] = [];
+  for (const r of raw) {
+    if (typeof r !== "object" || r === null) continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o["match"] !== "string" || !isDecision(o["decision"])) {
+      logger.warn({ source, rule: r }, "interpreter call: missing match or decision, skipping");
+      continue;
+    }
+    if (o["argMatches"] !== undefined && !validRegex(o["argMatches"], source, "interpreters.calls.argMatches")) continue;
+    out.push({
+      match: o["match"],
+      decision: o["decision"] as Decision,
+      ...(o["argMatches"] !== undefined ? { argMatches: String(o["argMatches"]) } : {}),
+      ...(o["pathArgsOutside"] !== undefined ? { pathArgsOutside: asStringArray(o["pathArgsOutside"]) } : {}),
+      description: optStr(o["description"]),
+      alternative: optStr(o["alternative"]),
+    });
+  }
+  return out;
+}
+
+function parseImportRules(raw: unknown, source: string): ImportRule[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ImportRule[] = [];
+  for (const r of raw) {
+    if (typeof r !== "object" || r === null) continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o["match"] !== "string" || !isDecision(o["decision"])) {
+      logger.warn({ source, rule: r }, "interpreter import: missing match or decision, skipping");
+      continue;
+    }
+    out.push({ match: o["match"], decision: o["decision"] as Decision, description: optStr(o["description"]) });
+  }
+  return out;
+}
+
+function parseWriteRule(raw: unknown, source: string): WriteRule | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const o = raw as Record<string, unknown>;
+  if (!Array.isArray(o["outside"]) || !isDecision(o["decision"])) {
+    logger.warn({ source, rule: raw }, "interpreter writes: needs outside[] and decision, skipping");
+    return undefined;
+  }
+  return {
+    outside: asStringArray(o["outside"]),
+    decision: o["decision"] as Decision,
+    description: optStr(o["description"]),
+    alternative: optStr(o["alternative"]),
+  };
+}
+
+function parseInterpreters(raw: unknown, source: string): Record<string, InterpreterConfig> {
+  if (typeof raw !== "object" || raw === null) return {};
+  const out: Record<string, InterpreterConfig> = {};
+  for (const [lang, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v !== "object" || v === null) continue;
+    const o = v as Record<string, unknown>;
+    out[lang] = {
+      names: asStringArray(o["names"]),
+      calls: parseCallRules(o["calls"], source),
+      imports: parseImportRules(o["imports"], source),
+      writes: parseWriteRule(o["writes"], source),
+    };
+  }
+  return out;
 }
 
 function validateConfig(raw: unknown, source: string): FencepostConfig | null {
@@ -129,11 +294,9 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   // an explicit setting; the default is applied via the merge against DEFAULT_CONFIG.
   const discourageChaining =
     typeof bashRaw["discourageChaining"] === "boolean" ? (bashRaw["discourageChaining"] as boolean) : undefined;
-  const parser = bashRaw["parser"] === "ast" || bashRaw["parser"] === "string" ? bashRaw["parser"] : undefined;
-  const denyWritesOutsideSandbox =
-    typeof bashRaw["denyWritesOutsideSandbox"] === "boolean"
-      ? (bashRaw["denyWritesOutsideSandbox"] as boolean)
-      : undefined;
+  const redirects = parseRedirectRules(bashRaw["redirects"], source);
+  const argumentRules = parseArgumentRules(bashRaw["arguments"], source);
+  const interpreters = parseInterpreters(bashRaw["interpreters"], source);
 
   const checks = ((bashRaw["checks"] ?? []) as unknown[])
     .filter((r): r is Record<string, unknown> => {
@@ -193,8 +356,9 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
         ask: bashAsk,
         allow: bashAllow,
         discourageChaining,
-        parser,
-        denyWritesOutsideSandbox,
+        redirects,
+        arguments: argumentRules,
+        interpreters,
       },
     },
   };
@@ -204,6 +368,27 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
 }
 
 // ---- Merging ----
+
+/** Merge interpreter maps: union names, concat calls/imports, writes last-wins. */
+function mergeInterpreters(
+  base: Record<string, InterpreterConfig> | undefined,
+  override: Record<string, InterpreterConfig> | undefined,
+): Record<string, InterpreterConfig> {
+  const out: Record<string, InterpreterConfig> = {};
+  for (const [lang, cfg] of Object.entries(base ?? {})) out[lang] = { ...cfg };
+  for (const [lang, cfg] of Object.entries(override ?? {})) {
+    const prev = out[lang];
+    out[lang] = prev
+      ? {
+          names: [...new Set([...(prev.names ?? []), ...(cfg.names ?? [])])],
+          calls: [...(prev.calls ?? []), ...(cfg.calls ?? [])],
+          imports: [...(prev.imports ?? []), ...(cfg.imports ?? [])],
+          writes: cfg.writes ?? prev.writes,
+        }
+      : { ...cfg };
+  }
+  return out;
+}
 
 function mergeConfigs(base: FencepostConfig, override: FencepostConfig): FencepostConfig {
   return {
@@ -219,11 +404,11 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
         allowChecks: [...(base.tools.bash.allowChecks ?? []), ...(override.tools.bash.allowChecks ?? [])],
         ask: [...base.tools.bash.ask, ...override.tools.bash.ask],
         allow: [...base.tools.bash.allow, ...override.tools.bash.allow],
-        // Scalars: override only when explicitly set, otherwise inherit the base.
+        redirects: [...(base.tools.bash.redirects ?? []), ...(override.tools.bash.redirects ?? [])],
+        arguments: [...(base.tools.bash.arguments ?? []), ...(override.tools.bash.arguments ?? [])],
+        interpreters: mergeInterpreters(base.tools.bash.interpreters, override.tools.bash.interpreters),
+        // Scalar: override only when explicitly set, otherwise inherit the base.
         discourageChaining: override.tools.bash.discourageChaining ?? base.tools.bash.discourageChaining,
-        parser: override.tools.bash.parser ?? base.tools.bash.parser,
-        denyWritesOutsideSandbox:
-          override.tools.bash.denyWritesOutsideSandbox ?? base.tools.bash.denyWritesOutsideSandbox,
       },
     },
     // Block-level last-wins: an override that omits the block inherits the base.

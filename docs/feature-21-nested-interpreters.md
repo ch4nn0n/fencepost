@@ -1,6 +1,6 @@
 # Feature 21: Nested Interpreter Analysis (inline Python/JS)
 
-Status: **design** — depends on `feature-19` (AST path) and `feature-20` (per-command extraction + path semantics). Active only when `tools.bash.parser: ast`.
+Status: **implemented**. Inline interpreter code is analysed in `src/bash/ast-interp.ts` and folded into the command's decision by `src/bash/evaluate-ast.ts`. Configured via `tools.bash.interpreters`; the bundled `python-safety` preset ships conservative defaults for Python and JS.
 
 ## Motivation
 

@@ -36,10 +36,20 @@ tools:
     - KillShell
 
   bash:
-    # Destructive scratch operations are allowed only inside the sandbox.
-    # These are regex allows anchored with `$`, so a single target under
-    # /tmp/claude matches but a stray extra path (e.g. "rm -rf /tmp/claude/x /etc")
-    # does not. Commands with two paths (cp/mv) are intentionally excluded and
-    # fall through to your default decision.
-    allowChecks:
-      - '^(rm|rmdir|mkdir|touch|cat|ls|head|tail|stat|wc|file)\s+(-\S+\s+)*/tmp/claude(/\S*)?$'
+    # Structured rules (feature 20) over the parsed command.
+    arguments:
+      # Allow scratch file ops when EVERY path argument is inside the sandbox.
+      # This is multi-target safe: "rm -rf /tmp/claude/x /etc" is NOT allowed,
+      # because /etc is outside the sandbox.
+      - command: "rm|rmdir|mkdir|touch|cp|mv|cat|ls|head|tail|stat|wc|file"
+        allArgsInside: ["/tmp/claude"]
+        decision: allow
+
+    redirects:
+      # Block writing/appending to an absolute path outside the sandbox or the
+      # project. (With redirect.tmp on, /tmp writes are already steered inward.)
+      - mode: write
+        outside: ["/tmp/claude", "."]
+        decision: deny
+        description: "Redirecting output outside the sandbox can clobber files."
+        alternative: "Write under /tmp/claude/ or a path inside the project."

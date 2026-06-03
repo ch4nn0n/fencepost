@@ -36,11 +36,72 @@ export interface BashConfig {
   // separate tool calls, so each can be approved on its own. Pipes (|) are
   // exempt. Populated with a default by the config loader (feature 17).
   discourageChaining?: boolean;
-  // SPIKE (feature 19): "ast" routes Bash through the tree-sitter extractor;
-  // "string" (default) uses the split + control-flow-strip pipeline.
-  parser?: "ast" | "string";
-  // AST-only rule: deny output redirection to an absolute path outside the sandbox.
-  denyWritesOutsideSandbox?: boolean;
+  // Structured rules over the parsed command (feature 20). Bash is always
+  // evaluated via the tree-sitter AST (feature 19); these reason about data the
+  // prefix/regex rules can't see.
+  redirects?: RedirectRule[];
+  arguments?: ArgumentRule[];
+  // Nested interpreter analysis (feature 21), keyed by language ("python" | "javascript").
+  interpreters?: Record<string, InterpreterConfig>;
+}
+
+// ---- Structured bash rules (feature 20) ----
+
+export type RedirectMode = "read" | "write" | "append" | "any";
+
+/** A rule over an output/input redirection target. */
+export interface RedirectRule {
+  mode: RedirectMode;
+  outside?: string[]; // fires if target is outside ALL these roots
+  glob?: string; // OR: fires if target matches this path glob
+  decision: Decision;
+  description?: string;
+  alternative?: string;
+}
+
+/** A rule over a command's arguments (reasons about every arg, not a prefix). */
+export interface ArgumentRule {
+  command: string; // command-name glob
+  anyArgOutside?: string[]; // any path-like arg outside all roots
+  allArgsInside?: string[]; // ≥1 path-like arg, all under some root
+  anyArgMatches?: string; // any raw arg matches this regex
+  allArgsMatch?: string; // every raw arg matches this regex
+  decision: Decision;
+  description?: string;
+  alternative?: string;
+}
+
+// ---- Nested interpreter rules (feature 21) ----
+
+/** A rule over a call in inline interpreter code (e.g. python -c "..."). */
+export interface CallRule {
+  match: string; // qualified callee glob, e.g. "shutil.rmtree", "subprocess.*"
+  argMatches?: string; // optional: any call arg text matches this regex
+  pathArgsOutside?: string[]; // fire only if a string path arg is outside all roots
+  decision: Decision;
+  description?: string;
+  alternative?: string;
+}
+
+/** Sugar for "a file is opened for writing" outside the given roots. */
+export interface WriteRule {
+  outside: string[];
+  decision: Decision;
+  description?: string;
+  alternative?: string;
+}
+
+export interface ImportRule {
+  match: string; // module-name glob
+  decision: Decision;
+  description?: string;
+}
+
+export interface InterpreterConfig {
+  names: string[]; // bash command names that invoke this interpreter
+  calls?: CallRule[];
+  writes?: WriteRule;
+  imports?: ImportRule[];
 }
 
 export interface ToolsConfig {

@@ -87,10 +87,25 @@ tools:
     # steps separately (see feature-17-discourage-chaining.md). Default: true.
     discourageChaining: true
 
-    # Experimental (see feature-19-ast-spike.md): route Bash through the
-    # tree-sitter parser instead of the string splitter. Default: string.
-    parser: string            # or: ast
-    denyWritesOutsideSandbox: false  # ast-only redirection rule
+    # Structured rules over the parsed command (Bash always runs through the
+    # tree-sitter AST). See feature-20-structured-bash-rules.md.
+    redirects:
+      - mode: write                    # read | write | append | any
+        outside: ["/tmp/claude", "."]  # or: glob: "/etc/**"
+        decision: deny
+        description: "Writing outside the sandbox can clobber files."
+    arguments:
+      - command: rm                    # name glob (| alternation ok)
+        allArgsInside: ["/tmp/claude"] # or anyArgOutside / anyArgMatches / allArgsMatch
+        decision: allow
+
+    # Nested interpreter analysis (see feature-21-nested-interpreters.md).
+    interpreters:
+      python:
+        names: ["python", "python3"]
+        calls:
+          - { match: "shutil.rmtree", pathArgsOutside: ["/tmp/claude", "."], decision: deny, description: "…" }
+        writes: { outside: ["/tmp/claude", "."], decision: deny }
 ```
 
 ## TypeScript Types
@@ -120,11 +135,16 @@ interface BashConfig {
   normalise: NormaliseRule[];
   deny: string[];
   checks: BashCheck[];
-  allowChecks?: string[];      // regex "smart allow" (feature 15)
+  allowChecks?: string[];       // regex "smart allow" (feature 15)
   ask: string[];
   allow: string[];
   discourageChaining?: boolean; // feature 17, default true
+  redirects?: RedirectRule[];   // feature 20
+  arguments?: ArgumentRule[];   // feature 20
+  interpreters?: Record<string, InterpreterConfig>; // feature 21
 }
+// RedirectRule / ArgumentRule: see feature-20-structured-bash-rules.md
+// InterpreterConfig (calls/writes/imports): see feature-21-nested-interpreters.md
 
 interface GuidanceConfig {
   enabled: boolean;            // default true

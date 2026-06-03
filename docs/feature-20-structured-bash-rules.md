@@ -1,6 +1,6 @@
 # Feature 20: Structured Bash Rules (redirections & arguments)
 
-Status: **design** — depends on the AST path (`feature-19-ast-spike.md`). Active only when `tools.bash.parser: ast`.
+Status: **implemented**. Bash always runs through the AST (`feature-19`), so these rules are always active. Implemented in `src/bash/ast.ts` (per-command extraction), `src/util/path-match.ts`, `src/bash/rules.ts` (matchers), and `src/bash/evaluate-ast.ts` (tiered evaluation). The `claude` preset uses them in place of the old `allowChecks` regex.
 
 ## Motivation
 

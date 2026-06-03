@@ -36,43 +36,46 @@ function makeInput(toolName: string, toolInput: Record<string, unknown>): HookIn
 }
 
 describe("evaluate", () => {
-  it("allows non-Bash tools in allow list", () => {
-    expect(evaluate(makeInput("Read", { file_path: "/foo" }), config).decision).toBe("allow");
+  it("allows non-Bash tools in allow list", async () => {
+    expect((await evaluate(makeInput("Read", { file_path: "/foo" }), config)).decision).toBe("allow");
   });
 
-  it("routes Bash through bash pipeline", () => {
-    const r = evaluate(makeInput("Bash", { command: "git branch -D main" }), config);
+  it("routes Bash through the AST pipeline", async () => {
+    const r = await evaluate(makeInput("Bash", { command: "git branch -D main" }), config);
     expect(r.decision).toBe("deny");
   });
 
-  it("handles compound commands — most restrictive wins", () => {
-    const r = evaluate(makeInput("Bash", { command: "ls && rm -rf /tmp/x" }), config);
+  it("handles compound commands — most restrictive wins", async () => {
+    const r = await evaluate(makeInput("Bash", { command: "ls && rm -rf /tmp/x" }), config);
     expect(r.decision).toBe("deny");
     expect(r.isCompound).toBe(true);
   });
 
-  it("allows compound when all parts allowed", () => {
-    const r = evaluate(makeInput("Bash", { command: "ls && git status" }), config);
+  it("allows compound when all parts allowed", async () => {
+    const r = await evaluate(makeInput("Bash", { command: "ls && git status" }), config);
     expect(r.decision).toBe("allow");
   });
 
-  it("ask compound when one part is ask", () => {
-    const r = evaluate(makeInput("Bash", { command: "ls && git push origin main" }), config);
+  it("ask compound when one part is ask", async () => {
+    const r = await evaluate(makeInput("Bash", { command: "ls && git push origin main" }), config);
     expect(r.decision).toBe("ask");
     expect(r.isCompound).toBe(true);
   });
 
-  it("Bash is not routed through tool matcher", () => {
-    // Even if Bash were in tools.deny, it goes through bash pipeline
+  it("evaluates loop bodies natively (no scaffolding heuristics)", async () => {
+    const allow = await evaluate(makeInput("Bash", { command: "for f in a b; do ls $f; done" }), config);
+    expect(allow.decision).toBe("allow");
+    const deny = await evaluate(makeInput("Bash", { command: "for f in a b; do rm -rf /$f; done" }), config);
+    expect(deny.decision).toBe("deny");
+  });
+
+  it("Bash is not routed through tool matcher", async () => {
+    // Even if Bash were in tools.deny, it goes through the bash pipeline.
     const cfgWithBashDenied: FencepostConfig = {
       ...config,
-      tools: {
-        ...config.tools,
-        deny: [{ tool: "Bash", description: "No bash" }],
-      },
+      tools: { ...config.tools, deny: [{ tool: "Bash", description: "No bash" }] },
     };
-    // ls is in bash.allow — should still be allowed
-    const r = evaluate(makeInput("Bash", { command: "ls" }), cfgWithBashDenied);
+    const r = await evaluate(makeInput("Bash", { command: "ls" }), cfgWithBashDenied);
     expect(r.decision).toBe("allow");
   });
 });

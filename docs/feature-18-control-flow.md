@@ -1,5 +1,12 @@
 # Feature 18: Loop & Conditional Handling
 
+> **Superseded by the AST (feature 19).** The regex-based `stripControlFlow`
+> heuristic described here has been removed. tree-sitter extracts the body
+> commands of `for`/`while`/`until`/`if`/`case` natively (a loop body is just a
+> `command` node in the parse), so the outcomes below now hold without the
+> heuristic. The discourage-chaining exemption for control flow is preserved via
+> the parser's `hadControlFlow` flag. This doc is kept for history.
+
 ## Summary
 
 Recognise shell control-flow constructs (`for`, `while`, `until`, `if`, `case`) and evaluate the **body** commands against the normal rule set, rather than letting the scaffolding confuse the command splitter.

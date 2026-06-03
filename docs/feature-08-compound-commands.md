@@ -1,5 +1,12 @@
 # Feature 08: Compound Command Splitting
 
+> **Superseded by the AST (feature 19).** The hand-rolled `splitCommand` parser
+> described here has been removed. tree-sitter extracts the individual simple
+> commands of a pipeline/list/subshell directly, and `hadSequencing` (true for
+> `&&`/`||`/`;`, false for a bare pipe) drives the discourage-chaining rule. The
+> most-restrictive-wins semantics below are unchanged. Kept for history.
+
+
 ## Summary
 
 When a Bash command contains compound operators (`&&`, `||`, `|`, `;`), split the command into sub-commands and evaluate each independently. The most restrictive decision wins.

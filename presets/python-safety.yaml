@@ -1,0 +1,60 @@
+# Fencepost preset: python-safety
+#
+# Import with:
+#   import:
+#     - python-safety
+#
+# Inspects inline interpreter code (python -c "...", node -e "...", heredocs)
+# and flags destructive operations the shell can't see (feature 21). Pairs well
+# with the `claude` preset, which defines the /tmp/claude sandbox.
+#
+# Limits (see feature-21-nested-interpreters.md): inline code only (not
+# `python script.py`); aliased imports (`import shutil as sh`) and dynamic
+# dispatch are not resolved. This reduces accidental damage; it is not a sandbox.
+
+tools:
+  bash:
+    interpreters:
+      python:
+        names: ["python", "python3"]
+        calls:
+          - match: "shutil.rmtree"
+            pathArgsOutside: ["/tmp/claude", "."]
+            decision: deny
+            description: "Inline Python recursively deletes a tree outside the sandbox."
+            alternative: "Operate under /tmp/claude/, or delete specific files."
+          - match: "os.remove|os.unlink|os.rmdir|os.removedirs"
+            pathArgsOutside: ["/tmp/claude", "."]
+            decision: ask
+            description: "Inline Python removes a file outside the sandbox."
+          - match: "subprocess.*|os.system|os.popen|os.exec*|os.spawn*"
+            decision: ask
+            description: "Inline Python is spawning a process the shell can't review."
+          - match: "eval|exec|compile|__import__|getattr"
+            decision: ask
+            description: "Inline Python uses dynamic execution / reflection."
+        writes:
+          outside: ["/tmp/claude", "."]
+          decision: deny
+          description: "Inline Python writes a file outside the sandbox."
+          alternative: "Write under /tmp/claude/ or inside the project."
+        imports:
+          - match: "ctypes|cffi"
+            decision: ask
+            description: "Inline Python loads native code."
+
+      javascript:
+        names: ["node", "bun", "deno"]
+        calls:
+          - match: "fs.rmSync|fs.rm|fs.unlinkSync|fs.unlink|fs.rmdirSync|fs.rmdir"
+            pathArgsOutside: ["/tmp/claude", "."]
+            decision: deny
+            description: "Inline JS deletes from the filesystem outside the sandbox."
+            alternative: "Operate under /tmp/claude/, or delete specific files."
+          - match: "child_process.*|Bun.spawn*"
+            decision: ask
+            description: "Inline JS is spawning a process the shell can't review."
+        writes:
+          outside: ["/tmp/claude", "."]
+          decision: deny
+          description: "Inline JS writes a file outside the sandbox."
