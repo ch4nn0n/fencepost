@@ -92,6 +92,10 @@ tools:
     # steps separately (see feature-17-discourage-chaining.md). Default: true.
     discourageChaining: true
 
+    # On a Bash deny, also offer the user the verbatim command to run themselves
+    # via `! <command>` (see feature-23-manual-run.md). Default: true.
+    offerManualRun: true
+
     # Structured rules over the parsed command (Bash always runs through the
     # tree-sitter AST). See feature-20-structured-bash-rules.md.
     redirects:
@@ -144,6 +148,7 @@ interface BashConfig {
   ask: string[];
   allow: string[];
   discourageChaining?: boolean; // feature 17, default true
+  offerManualRun?: boolean;     // feature 23, default true
   redirects?: RedirectRule[];   // feature 20
   arguments?: ArgumentRule[];   // feature 20
   interpreters?: Record<string, InterpreterConfig>; // feature 21

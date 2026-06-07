@@ -105,9 +105,20 @@ async function runEvaluate(): Promise<void> {
     });
     void writeAuditEntry(entry, input.cwd);
 
+    // On a Bash deny, optionally offer the user the verbatim original command to
+    // run themselves via `! <command>` (feature 23).
+    let manualRunCommand: string | undefined;
+    if (
+      result.decision === "deny" &&
+      input.tool_name === "Bash" &&
+      config.tools.bash.offerManualRun !== false
+    ) {
+      manualRunCommand = String((input.tool_input as Record<string, unknown>)["command"] ?? "") || undefined;
+    }
+
     // Write decision to stdout. If we rewrote the input, surface it via
     // updatedInput so the tool runs against the redirected path.
-    const output = formatOutput(result, changed ? effectiveInput : undefined);
+    const output = formatOutput(result, changed ? effectiveInput : undefined, manualRunCommand);
     if (output) {
       process.stdout.write(JSON.stringify(output) + "\n");
     }

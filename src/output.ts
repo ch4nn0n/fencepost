@@ -6,10 +6,14 @@ import type { EvalResult, HookOutput } from "./types.js";
  * `updatedInput`, when provided, is the rewritten tool input (e.g. /tmp paths
  * redirected to the sandbox). It is surfaced so the tool runs against the new
  * input on allow/ask. It is ignored on deny (the call won't run).
+ *
+ * `manualRunCommand`, when provided (deny only, feature 23), is the verbatim
+ * command the user may choose to run themselves outside fencepost.
  */
 export function formatOutput(
   result: EvalResult,
   updatedInput?: Record<string, unknown>,
+  manualRunCommand?: string,
 ): HookOutput | null {
   // Fast path: allow.
   if (result.decision === "allow") {
@@ -55,6 +59,15 @@ export function formatOutput(
           "Break compound commands into separate tool calls so each can be evaluated independently.",
         );
       }
+    }
+    if (manualRunCommand) {
+      // Lead with the alternative/rule; the manual run is a secondary escape hatch.
+      contextParts.push(
+        "If the user still wants to run the original command, they can run it themselves outside fencepost" +
+          " by typing it in the prompt prefixed with '!' (a user-run command does not pass through fencepost)." +
+          " Offer it to them in a copyable code block, exactly: " +
+          manualRunCommand,
+      );
     }
     output.hookSpecificOutput.additionalContext = contextParts.join(" ");
   }

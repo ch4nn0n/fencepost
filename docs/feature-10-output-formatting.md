@@ -90,6 +90,10 @@ The `additionalContext` reinforces that Claude should not retry the same command
 
 The `additionalContext` nudges Claude to avoid compounds in future, making evaluation simpler.
 
+### Deny (manual-run escape hatch)
+
+On a Bash deny, when `tools.bash.offerManualRun` is on (default), the `additionalContext` also instructs Claude to offer the user the verbatim command to run themselves via `! <command>`, presented in a copyable code block — after the alternative. See `feature-23-manual-run.md`.
+
 ### Ask
 
 ```json

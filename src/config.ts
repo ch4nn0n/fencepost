@@ -31,6 +31,7 @@ const DEFAULT_BASH_CONFIG: BashConfig = {
   ask: [],
   allow: [],
   discourageChaining: DEFAULT_DISCOURAGE_CHAINING,
+  offerManualRun: true,
   redirects: [],
   arguments: [],
   interpreters: {},
@@ -325,6 +326,8 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   );
   const discourageChaining =
     typeof bashRaw["discourageChaining"] === "boolean" ? (bashRaw["discourageChaining"] as boolean) : undefined;
+  const offerManualRun =
+    typeof bashRaw["offerManualRun"] === "boolean" ? (bashRaw["offerManualRun"] as boolean) : undefined;
   const redirects = parseRedirectRules(bashRaw["redirects"], source);
   const argumentRules = parseArgumentRules(bashRaw["arguments"], source);
   const interpreters = parseInterpreters(bashRaw["interpreters"], source);
@@ -380,6 +383,7 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
         ask: bashAsk,
         allow: bashAllow,
         discourageChaining,
+        offerManualRun,
         redirects,
         arguments: argumentRules,
         interpreters,
@@ -433,8 +437,9 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
         redirects: [...(base.tools.bash.redirects ?? []), ...(override.tools.bash.redirects ?? [])],
         arguments: [...(base.tools.bash.arguments ?? []), ...(override.tools.bash.arguments ?? [])],
         interpreters: mergeInterpreters(base.tools.bash.interpreters, override.tools.bash.interpreters),
-        // Scalar: override only when explicitly set, otherwise inherit the base.
+        // Scalars: override only when explicitly set, otherwise inherit the base.
         discourageChaining: override.tools.bash.discourageChaining ?? base.tools.bash.discourageChaining,
+        offerManualRun: override.tools.bash.offerManualRun ?? base.tools.bash.offerManualRun,
       },
     },
     // Block-level last-wins: an override that omits the block inherits the base.

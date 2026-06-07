@@ -36,6 +36,9 @@ export interface BashConfig {
   // separate tool calls, so each can be approved on its own. Pipes (|) are
   // exempt. Populated with a default by the config loader (feature 17).
   discourageChaining?: boolean;
+  // When a Bash command is denied, also offer the user the verbatim command to
+  // run themselves via `! <command>` (feature 23). Default true.
+  offerManualRun?: boolean;
   // Structured rules over the parsed command (feature 20). Bash is always
   // evaluated via the tree-sitter AST (feature 19); these reason about data the
   // prefix/regex rules can't see.
