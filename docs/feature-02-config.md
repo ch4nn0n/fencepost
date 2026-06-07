@@ -25,6 +25,11 @@ import:
 # One of: allow, deny, ask
 default: ask
 
+# Posture when fencepost can't reach a decision (unparseable command / error).
+# Default ask, optimised for interactive use (see feature-22-failure-posture.md).
+# A broken *config* is separate and always fails closed.
+onError: ask
+
 # Optional: guidance injected at session start (see feature-14-session-guidance.md).
 guidance:
   enabled: true

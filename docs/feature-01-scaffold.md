@@ -9,7 +9,7 @@ Initialize the Bun TypeScript project and create the main entry point that reads
 - Bun project with `package.json`, `tsconfig.json` (strict mode), `bunfig.toml`
 - `bin` entry in `package.json` pointing to `src/index.ts`
 - Entry point reads JSON from stdin, calls the evaluation pipeline, writes JSON to stdout, exits 0
-- **Fail-open**: any unhandled error exits 0 with no output (which means "allow" to Claude Code). A broken permission checker must not lock the user out.
+- **Failure posture** (now governed by `feature-22-failure-posture.md`): unidentifiable input (invalid stdin JSON) exits 0 with no output (allow). An unexpected error or an un-parseable *command* applies the configured `onError` posture (default `ask`), not a silent allow. A present-but-broken *config* fails closed (deny); a *missing* config uses defaults.
 
 ## Entry Point Flow (`src/index.ts`)
 

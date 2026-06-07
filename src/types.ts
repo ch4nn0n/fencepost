@@ -127,6 +127,12 @@ export interface RedirectConfig {
 export interface FencepostConfig {
   default: Decision;
   tools: ToolsConfig;
+  // Posture when fencepost runs but cannot reach a decision for a command
+  // (e.g. a Bash command the parser can't understand, or an unexpected error).
+  // Default "ask" — optimised for an interactive human. Headless/CI users who
+  // can't answer a prompt may prefer "allow". A broken *config* is handled
+  // separately and always fails closed (deny). (feature 22)
+  onError?: Decision;
   // Optional sections; the config loader always populates them with defaults,
   // but unit tests may construct a FencepostConfig without them.
   guidance?: GuidanceConfig;

@@ -133,8 +133,16 @@ export async function evaluateBashAst(
 ): Promise<EvalResult> {
   const res = await extractBash(rawCommand);
   if (!res.ok) {
-    logger.warn({ rawCommand }, "bash parse failed, failing open");
-    return { decision: "allow", reason: "Parse failed; failing open", matchedInput: rawCommand };
+    const onError = config.onError ?? "ask";
+    logger.warn({ rawCommand, onError }, "bash parse failed, applying onError posture");
+    return {
+      decision: onError,
+      reason: "Fencepost could not parse this command to check it.",
+      matchedInput: rawCommand,
+      ...(onError === "deny"
+        ? { alternative: "Simplify the command, or split it, so it can be analysed." }
+        : {}),
+    };
   }
 
   const results: EvalResult[] = [];

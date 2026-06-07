@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { readStdin } from "./util/stdin.js";
-import { resolveConfig } from "./config.js";
+import { compileConfig } from "./config.js";
 import { evaluate } from "./evaluate.js";
 import { formatOutput } from "./output.js";
 import { buildAuditEntry, writeAuditEntry } from "./audit/logger.js";
@@ -8,6 +8,7 @@ import { logger } from "./logger.js";
 import { normaliseCommand } from "./bash/normalise.js";
 import { redirectToolInput } from "./redirect.js";
 import { buildGuidance } from "./guidance.js";
+import type { Decision, EvalResult } from "./types.js";
 
 // Enable verbose logging if --verbose flag is passed
 if (process.argv.includes("--verbose")) {
@@ -25,14 +26,17 @@ switch (subcommand) {
     await runAudit();
     break;
   case "config":
-    await runConfig();
+    await runConfig(false);
+    break;
+  case "verify":
+    await runConfig(true);
     break;
   case "sessionstart":
     await runSessionStart();
     break;
   default:
     process.stderr.write(
-      `Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|sessionstart|audit|config] [--verbose]\n`,
+      `Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|sessionstart|audit|config|verify] [--verbose]\n`,
     );
     process.exit(1);
 }
@@ -40,15 +44,36 @@ switch (subcommand) {
 // ---- evaluate subcommand ----
 
 async function runEvaluate(): Promise<void> {
+  // Posture for an unexpected error mid-evaluation. Updated once config loads.
+  let onError: Decision = "ask";
   try {
     const input = await readStdin();
     if (!input) {
-      // No input or parse failure — fail-open
-      logger.warn("could not parse stdin as JSON, failing open");
+      // We can't even identify the action; nothing meaningful to gate. Allow.
+      logger.warn("could not parse stdin as JSON, allowing");
       process.exit(0);
     }
 
-    const config = await resolveConfig(input.cwd);
+    const compiled = await compileConfig(input.cwd);
+    const config = compiled.config;
+    onError = config.onError ?? "ask";
+
+    // Fail CLOSED on a broken config: a human should fix it before we run
+    // unguarded. (A *missing* config is fine; this only triggers on a present
+    // but unparseable/invalid file.)
+    if (!compiled.ok) {
+      const detail = compiled.errors.map((e) => `${e.file}: ${e.message}`).join("; ");
+      logger.error({ errors: compiled.errors }, "config invalid, failing closed");
+      const denied: EvalResult = {
+        decision: "deny",
+        reason: `Fencepost config is invalid, so it is failing closed (blocking) until fixed. ${detail}`,
+        alternative: "Tell the user to fix the fencepost config (run `fencepost verify` to see all errors).",
+        matchedInput: input.tool_name,
+      };
+      const out = formatOutput(denied);
+      if (out) process.stdout.write(JSON.stringify(out) + "\n");
+      process.exit(0);
+    }
 
     // Redirect /tmp paths to the sandbox dir (if enabled) BEFORE evaluating, so
     // rules and the audit log see the path the tool will actually use.
@@ -90,8 +115,16 @@ async function runEvaluate(): Promise<void> {
 
     process.exit(0);
   } catch (err) {
-    // Fail-open: any unhandled error should not block Claude
-    logger.error({ err }, "unhandled error in evaluate, failing open");
+    // Unexpected error: apply the configured onError posture (default ask).
+    logger.error({ err, onError }, "unhandled error in evaluate, applying onError posture");
+    if (onError !== "allow") {
+      const out = formatOutput({
+        decision: onError,
+        reason: "Fencepost hit an unexpected error and could not check this command.",
+        matchedInput: "",
+      });
+      if (out) process.stdout.write(JSON.stringify(out) + "\n");
+    }
     process.exit(0);
   }
 }
@@ -103,9 +136,15 @@ async function runSessionStart(): Promise<void> {
     const input = await readStdin();
     // SessionStart hook input carries cwd; fall back to process.cwd().
     const cwd = (input?.cwd as string | undefined) ?? process.cwd();
-    const config = await resolveConfig(cwd);
+    const compiled = await compileConfig(cwd);
 
-    const context = buildGuidance(config);
+    let context = buildGuidance(compiled.config);
+    // Surface a broken config loudly at session start so the human fixes it.
+    if (!compiled.ok) {
+      const detail = compiled.errors.map((e) => `${e.file}: ${e.message}`).join("; ");
+      const warn = `⚠ Fencepost config is INVALID and is failing closed (all tool calls will be denied) until fixed: ${detail}`;
+      context = context ? `${warn}\n\n${context}` : warn;
+    }
     if (!context) {
       process.exit(0);
     }
@@ -134,22 +173,12 @@ async function runAudit(): Promise<void> {
   await runAuditSkill(cwd);
 }
 
-// ---- config subcommand ----
+// ---- config / verify subcommands ----
 
-async function runConfig(): Promise<void> {
+async function runConfig(verify: boolean): Promise<void> {
   const cwd = process.cwd();
-  const config = await resolveConfig(cwd);
-
-  const { _sources, ...cfg } = config;
-  process.stdout.write("## Resolved Config\n\n");
-
-  if (_sources.length === 0) {
-    process.stdout.write("No config files found — using defaults.\n\n");
-  } else {
-    process.stdout.write(`Source files:\n${_sources.map((s) => `  - ${s}`).join("\n")}\n\n`);
-  }
-
-  process.stdout.write("```json\n");
-  process.stdout.write(JSON.stringify(cfg, null, 2));
-  process.stdout.write("\n```\n");
+  const compiled = await compileConfig(cwd);
+  process.stdout.write(compiled.render() + "\n");
+  // `verify` exits non-zero when the config has errors (useful in CI / pre-commit).
+  if (verify) process.exit(compiled.ok ? 0 : 1);
 }

@@ -55,16 +55,38 @@ const DEFAULT_REDIRECT_CONFIG: RedirectConfig = {
   tmpTarget: "/tmp/claude",
 };
 
+// Optimised for an interactive human: when we can't decide, ask.
+const DEFAULT_ON_ERROR: Decision = "ask";
+
 export const DEFAULT_CONFIG: FencepostConfig = {
   default: "ask",
+  onError: DEFAULT_ON_ERROR,
   tools: DEFAULT_TOOLS_CONFIG,
   guidance: DEFAULT_GUIDANCE_CONFIG,
   redirect: DEFAULT_REDIRECT_CONFIG,
 };
 
+// ---- Issue collection ----
+
+export interface ConfigIssue {
+  level: "error" | "warning";
+  file: string;
+  message: string;
+}
+
+// Active only while compileConfig() is running. Parse/validation helpers record
+// issues here (in addition to logging) so the verifier can report them.
+let issueSink: ConfigIssue[] | null = null;
+
+function note(level: "error" | "warning", file: string, message: string): void {
+  if (issueSink) issueSink.push({ level, file, message });
+  if (level === "error") logger.error({ file }, message);
+  else logger.warn({ file }, message);
+}
+
 // ---- Validation ----
 
-function isDecision(v: unknown): v is "allow" | "deny" | "ask" {
+function isDecision(v: unknown): v is Decision {
   return v === "allow" || v === "deny" || v === "ask";
 }
 
@@ -81,7 +103,7 @@ function validRegex(pattern: unknown, source: string, where: string): boolean {
     new RegExp(String(pattern));
     return true;
   } catch {
-    logger.warn({ source, pattern, where }, "invalid regex, skipping rule");
+    note("warning", source, `${where}: invalid regex ${JSON.stringify(pattern)}, skipping rule`);
     return false;
   }
 }
@@ -96,17 +118,17 @@ function parseRedirectRules(raw: unknown, source: string): RedirectRule[] {
     const o = r as Record<string, unknown>;
     const mode = o["mode"];
     if (mode !== "read" && mode !== "write" && mode !== "append" && mode !== "any") {
-      logger.warn({ source, rule: r }, "redirects: invalid mode, skipping");
+      note("warning", source, "redirects: invalid mode, skipping rule");
       continue;
     }
     if (!isDecision(o["decision"])) {
-      logger.warn({ source, rule: r }, "redirects: invalid decision, skipping");
+      note("warning", source, "redirects: invalid decision, skipping rule");
       continue;
     }
     const hasOutside = Array.isArray(o["outside"]);
     const hasGlob = typeof o["glob"] === "string";
     if (hasOutside === hasGlob) {
-      logger.warn({ source, rule: r }, "redirects: provide exactly one of outside/glob, skipping");
+      note("warning", source, "redirects: provide exactly one of outside/glob, skipping rule");
       continue;
     }
     out.push({
@@ -128,16 +150,16 @@ function parseArgumentRules(raw: unknown, source: string): ArgumentRule[] {
     if (typeof r !== "object" || r === null) continue;
     const o = r as Record<string, unknown>;
     if (typeof o["command"] !== "string") {
-      logger.warn({ source, rule: r }, "arguments: missing command, skipping");
+      note("warning", source, "arguments: missing command, skipping rule");
       continue;
     }
     if (!isDecision(o["decision"])) {
-      logger.warn({ source, rule: r }, "arguments: invalid decision, skipping");
+      note("warning", source, "arguments: invalid decision, skipping rule");
       continue;
     }
     const present = predicates.filter((k) => o[k] !== undefined);
     if (present.length !== 1) {
-      logger.warn({ source, rule: r }, "arguments: provide exactly one predicate, skipping");
+      note("warning", source, "arguments: provide exactly one predicate, skipping rule");
       continue;
     }
     if (o["anyArgMatches"] !== undefined && !validRegex(o["anyArgMatches"], source, "arguments.anyArgMatches")) continue;
@@ -163,7 +185,7 @@ function parseCallRules(raw: unknown, source: string): CallRule[] {
     if (typeof r !== "object" || r === null) continue;
     const o = r as Record<string, unknown>;
     if (typeof o["match"] !== "string" || !isDecision(o["decision"])) {
-      logger.warn({ source, rule: r }, "interpreter call: missing match or decision, skipping");
+      note("warning", source, "interpreters.calls: missing match or decision, skipping rule");
       continue;
     }
     if (o["argMatches"] !== undefined && !validRegex(o["argMatches"], source, "interpreters.calls.argMatches")) continue;
@@ -186,7 +208,7 @@ function parseImportRules(raw: unknown, source: string): ImportRule[] {
     if (typeof r !== "object" || r === null) continue;
     const o = r as Record<string, unknown>;
     if (typeof o["match"] !== "string" || !isDecision(o["decision"])) {
-      logger.warn({ source, rule: r }, "interpreter import: missing match or decision, skipping");
+      note("warning", source, "interpreters.imports: missing match or decision, skipping rule");
       continue;
     }
     out.push({ match: o["match"], decision: o["decision"] as Decision, description: optStr(o["description"]) });
@@ -198,7 +220,7 @@ function parseWriteRule(raw: unknown, source: string): WriteRule | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const o = raw as Record<string, unknown>;
   if (!Array.isArray(o["outside"]) || !isDecision(o["decision"])) {
-    logger.warn({ source, rule: raw }, "interpreter writes: needs outside[] and decision, skipping");
+    note("warning", source, "interpreters.writes: needs outside[] and decision, skipping");
     return undefined;
   }
   return {
@@ -225,9 +247,15 @@ function parseInterpreters(raw: unknown, source: string): Record<string, Interpr
   return out;
 }
 
+/**
+ * Validate one parsed config object. Returns null on a *structural* (fatal)
+ * problem — wrong top-level shape or an invalid `default`/`onError` value — and
+ * records it as an error. Per-rule problems are recorded as warnings and the
+ * offending rule skipped.
+ */
 function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   if (typeof raw !== "object" || raw === null) {
-    logger.warn({ source }, "config is not an object, skipping");
+    note("error", source, "config is not a YAML mapping");
     return null;
   }
 
@@ -235,18 +263,26 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
 
   const defaultDecision = obj["default"] ?? "ask";
   if (!isDecision(defaultDecision)) {
-    logger.warn({ source, value: defaultDecision }, "invalid default decision");
+    note("error", source, `invalid 'default' value: ${JSON.stringify(obj["default"])} (expected allow|deny|ask)`);
     return null;
+  }
+
+  let onError: Decision | undefined;
+  if (obj["onError"] !== undefined) {
+    if (!isDecision(obj["onError"])) {
+      note("error", source, `invalid 'onError' value: ${JSON.stringify(obj["onError"])} (expected allow|deny|ask)`);
+      return null;
+    }
+    onError = obj["onError"];
   }
 
   const toolsRaw = (obj["tools"] ?? {}) as Record<string, unknown>;
 
-  // Validate tools.deny
   const denyRaw = (toolsRaw["deny"] ?? []) as unknown[];
   const deny = denyRaw
     .filter((r): r is Record<string, unknown> => {
       if (typeof r !== "object" || r === null || !("tool" in r) || !("description" in r)) {
-        logger.warn({ source, rule: r }, "tools.deny entry missing tool or description, skipping");
+        note("warning", source, "tools.deny entry missing tool or description, skipping");
         return false;
       }
       return true;
@@ -257,17 +293,21 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
       alternative: r["alternative"] !== undefined ? String(r["alternative"]) : undefined,
     }));
 
-  // Validate tools.ask / tools.allow (plain strings)
   const ask = ((toolsRaw["ask"] ?? []) as unknown[]).filter((s): s is string => {
-    if (typeof s !== "string") { logger.warn({ source, value: s }, "tools.ask entry is not a string, skipping"); return false; }
+    if (typeof s !== "string") {
+      note("warning", source, "tools.ask entry is not a string, skipping");
+      return false;
+    }
     return true;
   });
   const allow = ((toolsRaw["allow"] ?? []) as unknown[]).filter((s): s is string => {
-    if (typeof s !== "string") { logger.warn({ source, value: s }, "tools.allow entry is not a string, skipping"); return false; }
+    if (typeof s !== "string") {
+      note("warning", source, "tools.allow entry is not a string, skipping");
+      return false;
+    }
     return true;
   });
 
-  // Validate tools.bash
   const bashRaw = (toolsRaw["bash"] ?? {}) as Record<string, unknown>;
 
   const normalise = ((bashRaw["normalise"] ?? []) as unknown[])
@@ -280,18 +320,9 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   const bashDeny = ((bashRaw["deny"] ?? []) as unknown[]).filter((s): s is string => typeof s === "string");
   const bashAsk = ((bashRaw["ask"] ?? []) as unknown[]).filter((s): s is string => typeof s === "string");
   const bashAllow = ((bashRaw["allow"] ?? []) as unknown[]).filter((s): s is string => typeof s === "string");
-  const allowChecks = ((bashRaw["allowChecks"] ?? []) as unknown[]).filter((s): s is string => {
-    if (typeof s !== "string") return false;
-    try {
-      new RegExp(s);
-      return true;
-    } catch {
-      logger.warn({ source, pattern: s }, "bash.allowChecks entry has invalid regex, skipping");
-      return false;
-    }
-  });
-  // Left undefined when absent so a later file that omits it does not clobber
-  // an explicit setting; the default is applied via the merge against DEFAULT_CONFIG.
+  const allowChecks = ((bashRaw["allowChecks"] ?? []) as unknown[]).filter(
+    (s): s is string => typeof s === "string" && validRegex(s, source, "bash.allowChecks"),
+  );
   const discourageChaining =
     typeof bashRaw["discourageChaining"] === "boolean" ? (bashRaw["discourageChaining"] as boolean) : undefined;
   const redirects = parseRedirectRules(bashRaw["redirects"], source);
@@ -301,17 +332,10 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   const checks = ((bashRaw["checks"] ?? []) as unknown[])
     .filter((r): r is Record<string, unknown> => {
       if (typeof r !== "object" || r === null || !("test" in r) || !("description" in r)) {
-        logger.warn({ source, rule: r }, "bash.checks entry missing test or description, skipping");
+        note("warning", source, "bash.checks entry missing test or description, skipping");
         return false;
       }
-      // Validate regex
-      try {
-        new RegExp(String((r as Record<string, unknown>)["test"]));
-        return true;
-      } catch {
-        logger.warn({ source, pattern: (r as Record<string, unknown>)["test"] }, "bash.checks entry has invalid regex, skipping");
-        return false;
-      }
+      return validRegex((r as Record<string, unknown>)["test"], source, "bash.checks");
     })
     .map((r) => ({
       test: String(r["test"]),
@@ -362,6 +386,7 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
       },
     },
   };
+  if (onError) result.onError = onError;
   if (guidance) result.guidance = guidance;
   if (redirect) result.redirect = redirect;
   return result;
@@ -393,6 +418,7 @@ function mergeInterpreters(
 function mergeConfigs(base: FencepostConfig, override: FencepostConfig): FencepostConfig {
   return {
     default: override.default, // last wins
+    onError: override.onError ?? base.onError,
     tools: {
       deny: [...base.tools.deny, ...override.tools.deny],
       ask: [...base.tools.ask, ...override.tools.ask],
@@ -436,21 +462,19 @@ function presetSearchDirs(): string[] {
   const dirs: string[] = [];
   const envDir = process.env["FENCEPOST_PRESETS_DIR"];
   if (envDir) dirs.push(envDir);
-  // Relative to the compiled binary: bin/fencepost -> ../presets
   try {
     dirs.push(join(dirname(process.execPath), "..", "presets"));
   } catch {
     /* process.execPath unavailable; ignore */
   }
-  // Relative to source during development: src/ -> ../presets
   dirs.push(join(import.meta.dir, "..", "presets"));
   return dirs;
 }
 
 /** Resolve a preset name to an on-disk YAML path, or null if not found. */
-async function resolvePreset(name: string): Promise<string | null> {
+async function resolvePreset(name: string, importedFrom: string): Promise<string | null> {
   if (!PRESET_NAME_RE.test(name)) {
-    logger.warn({ name }, "invalid preset name in import (must be a bare identifier), skipping");
+    note("warning", importedFrom, `invalid preset name in import: ${JSON.stringify(name)} (must be a bare identifier)`);
     return null;
   }
   for (const dir of presetSearchDirs()) {
@@ -459,7 +483,7 @@ async function resolvePreset(name: string): Promise<string | null> {
       if (await Bun.file(candidate).exists()) return candidate;
     }
   }
-  logger.warn({ name, searched: presetSearchDirs() }, "imported preset not found, skipping");
+  note("warning", importedFrom, `imported preset not found: ${name}`);
   return null;
 }
 
@@ -467,14 +491,14 @@ async function resolvePreset(name: string): Promise<string | null> {
  * Load and merge the named presets into a single base config. Presets are
  * merged in listed order; nested imports inside a preset are ignored.
  */
-async function loadImports(names: string[]): Promise<{ config: FencepostConfig; sources: string[] }> {
+async function loadImports(names: string[], importedFrom: string): Promise<{ config: FencepostConfig; sources: string[] }> {
   let merged = DEFAULT_CONFIG;
   const sources: string[] = [];
   for (const name of names) {
-    const path = await resolvePreset(name);
+    const path = await resolvePreset(name, importedFrom);
     if (!path) continue;
     const loaded = await loadYamlFile(path);
-    if (!loaded) continue;
+    if (!loaded) continue; // loadYamlFile recorded the error
     merged = mergeConfigs(merged, loaded.config);
     sources.push(path);
   }
@@ -483,23 +507,27 @@ async function loadImports(names: string[]): Promise<{ config: FencepostConfig; 
 
 // ---- File loading ----
 
+/** Load one config file. Returns null on a present-but-broken file (error noted). */
 async function loadYamlFile(
   filePath: string,
 ): Promise<{ config: FencepostConfig; imports: string[] } | null> {
+  let text: string;
   try {
-    const text = await Bun.file(filePath).text();
-    const raw = yamlLoad(text);
-    const config = validateConfig(raw, filePath);
-    if (!config) {
-      logger.warn({ file: filePath }, "skipping invalid config file");
-      return null;
-    }
-    logger.debug({ file: filePath }, "loaded config file");
-    return { config, imports: extractImports(raw) };
+    text = await Bun.file(filePath).text();
   } catch (err) {
-    logger.warn({ file: filePath, err }, "failed to read/parse config file");
+    note("error", filePath, `could not read file: ${(err as Error).message}`);
     return null;
   }
+  let raw: unknown;
+  try {
+    raw = yamlLoad(text);
+  } catch (err) {
+    note("error", filePath, `YAML parse error: ${(err as Error).message}`);
+    return null;
+  }
+  const config = validateConfig(raw, filePath);
+  if (!config) return null; // validateConfig recorded the fatal error
+  return { config, imports: extractImports(raw) };
 }
 
 async function loadConfDir(
@@ -510,12 +538,12 @@ async function loadConfDir(
     const { readdir } = await import("node:fs/promises");
     entries = await readdir(dirPath);
   } catch {
-    return null;
+    return null; // directory absent — not an error
   }
 
   const yamlFiles = entries
     .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
-    .sort() // alphabetical
+    .sort()
     .map((f) => join(dirPath, f));
 
   if (yamlFiles.length === 0) return null;
@@ -531,27 +559,99 @@ async function loadConfDir(
       sources.push(file);
       imports.push(...loaded.imports);
     }
+    // A broken file already recorded an error issue; we keep going so the
+    // verifier can report every problem, but the run will fail closed.
   }
 
-  return sources.length > 0 ? { config: merged, sources, imports } : null;
+  return { config: merged, sources, imports };
+}
+
+// ---- Compiled config (verify + show) ----
+
+/**
+ * The fully resolved config plus any issues found while loading it. This is the
+ * canonical loader; `resolveConfig` is a thin wrapper for the hot path.
+ */
+export class CompiledConfig {
+  constructor(
+    readonly config: ResolvedConfig,
+    readonly issues: ConfigIssue[],
+  ) {}
+
+  get sources(): string[] {
+    return this.config._sources;
+  }
+  get errors(): ConfigIssue[] {
+    return this.issues.filter((i) => i.level === "error");
+  }
+  get warnings(): ConfigIssue[] {
+    return this.issues.filter((i) => i.level === "warning");
+  }
+  /** True when the config loaded cleanly enough to enforce. */
+  get ok(): boolean {
+    return this.errors.length === 0;
+  }
+
+  /** Human-readable verification + effective-config report. */
+  render(): string {
+    const lines: string[] = ["# Fencepost config", ""];
+
+    if (this.sources.length === 0) {
+      lines.push("No config files found — using built-in defaults.", "");
+    } else {
+      lines.push(`Sources (${this.sources.length}):`);
+      for (const s of this.sources) lines.push(`  - ${s}`);
+      lines.push("");
+    }
+
+    if (this.errors.length > 0) {
+      lines.push(`## Errors (${this.errors.length}) — config will FAIL CLOSED until fixed`);
+      for (const e of this.errors) lines.push(`  ✖ [${e.file}] ${e.message}`);
+      lines.push("");
+    }
+    if (this.warnings.length > 0) {
+      lines.push(`## Warnings (${this.warnings.length})`);
+      for (const w of this.warnings) lines.push(`  ⚠ [${w.file}] ${w.message}`);
+      lines.push("");
+    }
+    if (this.ok && this.warnings.length === 0) {
+      lines.push("No problems found.", "");
+    }
+
+    const { _sources, ...effective } = this.config;
+    void _sources;
+    lines.push("## Effective config", "```json", JSON.stringify(effective, null, 2), "```");
+    return lines.join("\n");
+  }
 }
 
 // ---- Public API ----
 
 /**
- * Resolve the fencepost config for a given working directory.
- *
  * Resolution order:
  * 1. {cwd}/.claude/fencepost/config/ — conf.d style
  * 2. {cwd}/.claude/fencepost.yaml   — single file (backward compat)
  * 3. ~/.claude/fencepost/config/    — user-level conf.d
  * 4. ~/.claude/fencepost.yaml       — user-level single file
- * 5. Default config (fail-open)
+ * 5. Default config (no config is not an error)
  *
- * Any `import:` entries in the resolved config pull in bundled presets, which
- * are merged as the base (so the user's own rules layer on top of them).
+ * Returns the resolved config plus every issue found. A present-but-broken
+ * config file records an error (CompiledConfig.ok === false); callers should
+ * fail closed in that case.
  */
-export async function resolveConfig(cwd: string): Promise<ResolvedConfig> {
+export async function compileConfig(cwd: string): Promise<CompiledConfig> {
+  const issues: ConfigIssue[] = [];
+  const prevSink = issueSink;
+  issueSink = issues;
+  try {
+    const config = await resolveInternal(cwd);
+    return new CompiledConfig(config, issues);
+  } finally {
+    issueSink = prevSink;
+  }
+}
+
+async function resolveInternal(cwd: string): Promise<ResolvedConfig> {
   const home = homedir();
   const claudeDir = join(resolve(cwd), ".claude");
 
@@ -560,23 +660,26 @@ export async function resolveConfig(cwd: string): Promise<ResolvedConfig> {
     { confDir: join(home, ".claude", "fencepost", "config"), singleFile: join(home, ".claude", "fencepost.yaml") },
   ];
 
-  let host: { config: FencepostConfig; sources: string[]; imports: string[] } | null = null;
+  let host: { config: FencepostConfig; sources: string[]; imports: string[]; from: string } | null = null;
 
   for (const { confDir, singleFile } of candidates) {
-    // Try conf.d directory first
     const dirResult = await loadConfDir(confDir);
     if (dirResult) {
-      host = dirResult;
+      host = { ...dirResult, from: confDir };
       break;
     }
-
-    // Fall back to single file
     if (await Bun.file(singleFile).exists()) {
       const loaded = await loadYamlFile(singleFile);
-      if (loaded) {
-        host = { config: loaded.config, sources: [singleFile], imports: loaded.imports };
-        break;
-      }
+      // Even when broken (loaded === null) we treat this as "config present":
+      // an error was recorded and we stop searching, so the run fails closed.
+      // List the file either way so the report points at it.
+      host = {
+        config: loaded?.config ?? DEFAULT_CONFIG,
+        sources: [singleFile],
+        imports: loaded?.imports ?? [],
+        from: singleFile,
+      };
+      break;
     }
   }
 
@@ -585,11 +688,15 @@ export async function resolveConfig(cwd: string): Promise<ResolvedConfig> {
     return { ...DEFAULT_CONFIG, _sources: [] };
   }
 
-  // Merge imported presets as the base, then layer the user's own rules on top.
-  const presets = await loadImports(host.imports);
+  const presets = await loadImports(host.imports, host.from);
   const finalConfig = mergeConfigs(presets.config, host.config);
   const sources = [...presets.sources, ...host.sources];
 
   logger.info({ sources, imports: host.imports }, "config resolved");
   return { ...finalConfig, _sources: sources };
+}
+
+/** Hot-path convenience: the resolved config only. Use compileConfig() to see issues. */
+export async function resolveConfig(cwd: string): Promise<ResolvedConfig> {
+  return (await compileConfig(cwd)).config;
 }
