@@ -1,18 +1,38 @@
 {
   "name": "fencepost",
   "version": "0.1.0",
-  "description": "Configurable permission checker for Claude Code tools",
+  "description": "Configurable permission gate for Claude Code tool calls",
   "module": "src/index.ts",
   "main": "src/index.ts",
   "type": "module",
   "private": true,
+  "license": "GPL-3.0-or-later",
+  "author": "ch4nn0n",
+  "homepage": "https://ch4nn0n.github.io/fencepost/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ch4nn0n/fencepost.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ch4nn0n/fencepost/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "permissions",
+    "security",
+    "hook",
+    "plugin",
+    "guardrail"
+  ],
   "bin": {
     "fencepost": "./bin/fencepost"
   },
   "scripts": {
     "build": "bun build --compile src/index.ts --outfile bin/fencepost",
     "dev": "bun run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",
