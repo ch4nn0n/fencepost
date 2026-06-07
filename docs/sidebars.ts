@@ -1,0 +1,47 @@
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
+
+const sidebars: SidebarsConfig = {
+  docs: [
+    'intro',
+    {
+      type: 'category',
+      label: 'Getting started',
+      collapsed: false,
+      items: [
+        'getting-started/installation',
+        'getting-started/quick-start',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Core concepts',
+      collapsed: false,
+      items: [
+        'concepts/decision-model',
+        'concepts/evaluation',
+        'concepts/failure-posture',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Configuration',
+      items: [
+        'configuration/config-files',
+        'configuration/tool-rules',
+        'configuration/bash-rules',
+        'configuration/structured-bash-rules',
+        'configuration/interpreters',
+        'configuration/sandbox',
+        'configuration/guidance-and-chaining',
+      ],
+    },
+    'presets',
+    {
+      type: 'category',
+      label: 'Reference',
+      items: ['reference/cli-and-audit'],
+    },
+  ],
+};
+
+export default sidebars;
