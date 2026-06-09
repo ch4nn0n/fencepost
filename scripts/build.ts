@@ -2,7 +2,7 @@
 // tree-sitter wasm files copied alongside it. The result runs under plain Node
 // (no Bun, no compile step) and is committed so the plugin ships ready-to-run.
 
-import { rm, mkdir, copyFile } from "node:fs/promises";
+import { rm, mkdir, copyFile, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +26,16 @@ if (!result.success) {
   console.error("build failed:");
   for (const log of result.logs) console.error(log);
   process.exit(1);
+}
+
+// Bun inlines the absolute build-host path as `__dirname` for bundled CJS deps
+// (e.g. web-tree-sitter). We pass wasm bytes explicitly, so that value is never
+// used at runtime; strip the build path so the bundle is byte-identical across
+// machines (reproducible builds + a meaningful CI freshness check).
+{
+  const bundle = join(out, "index.js");
+  const code = (await readFile(bundle, "utf8")).split(root).join(".");
+  await writeFile(bundle, code);
 }
 
 // Copy the wasm grammars next to the bundle so wasm.ts can find them at runtime.

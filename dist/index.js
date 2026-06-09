@@ -2728,7 +2728,7 @@ var init_wasm = __esm(() => {
 
 // node_modules/web-tree-sitter/tree-sitter.js
 var require_tree_sitter = __commonJS((exports, module2) => {
-  var __dirname = "/home/josh/git/fencepost/node_modules/web-tree-sitter";
+  var __dirname = "./node_modules/web-tree-sitter";
   var Module = Module !== undefined ? Module : {};
   var TreeSitter = function() {
     var initPromise, document = typeof window == "object" ? { currentScript: window.document.currentScript } : null;
