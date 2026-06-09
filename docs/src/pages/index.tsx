@@ -1,16 +1,97 @@
 import type { ReactNode } from 'react';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
-import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import styles from './index.module.css';
 
+/* A row of fence posts — also the bash pipe operator. */
 function Fence({ className }: { className?: string }): ReactNode {
-  // A row of fence posts — also the bash pipe operator.
   return (
     <div className={`${styles.fence} ${className ?? ''}`} aria-hidden="true">
       {Array.from({ length: 48 }).map((_, i) => (
-        <span key={i} style={{ animationDelay: `${(i % 12) * 60}ms` }} />
+        <span key={i} style={{ animationDelay: `${(i % 12) * 55}ms` }} />
       ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ *  Hero — say plainly what fencepost is, and show it intercepting.
+ * ------------------------------------------------------------------ */
+
+type Verdict = 'allow' | 'ask' | 'deny';
+
+type Intercept = {
+  cmd: string;
+  verdict: Verdict;
+  note: string;
+  steer?: string;
+};
+
+const session: Intercept[] = [
+  {
+    cmd: 'rm -rf $BUILD_DIR',
+    verdict: 'deny',
+    note: 'recursive force-delete on an unbounded path',
+    steer: 'rm -rf ./dist  — scoped to the project',
+  },
+  {
+    cmd: 'git push origin main',
+    verdict: 'ask',
+    note: 'push to a shared branch — needs a human',
+  },
+  {
+    cmd: 'bun test --coverage',
+    verdict: 'allow',
+    note: 'matched allow rule · runs silently',
+  },
+];
+
+const verdictLabel: Record<Verdict, string> = {
+  allow: 'allow',
+  ask: 'ask',
+  deny: 'deny',
+};
+
+function Terminal(): ReactNode {
+  return (
+    <div className={styles.term}>
+      <div className={styles.termBar}>
+        <span />
+        <span />
+        <span />
+        <em>claude code · PreToolUse</em>
+      </div>
+      <div className={styles.termBody}>
+        {session.map((it, i) => (
+          <div
+            key={it.cmd}
+            className={styles.intercept}
+            style={{ animationDelay: `${0.35 + i * 0.22}s` }}
+          >
+            <div className={styles.proposed}>
+              <span className={styles.proposedLabel}>
+                Claude wants to run
+              </span>
+              <code>{it.cmd}</code>
+            </div>
+            <div className={`${styles.verdict} ${styles[it.verdict]}`}>
+              <span className={styles.verdictBar} aria-hidden="true" />
+              <span className={styles.verdictPill}>{verdictLabel[it.verdict]}</span>
+              <span className={styles.verdictNote}>{it.note}</span>
+            </div>
+            {it.steer && (
+              <div className={styles.steer}>
+                <span className={styles.steerArrow}>→</span>
+                <code>{it.steer}</code>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className={styles.termFoot}>
+        <span className={styles.termDot} />
+        every tool call, checked before it runs
+      </div>
     </div>
   );
 }
@@ -18,134 +99,107 @@ function Fence({ className }: { className?: string }): ReactNode {
 function Hero(): ReactNode {
   return (
     <header className={styles.hero}>
-      <div className={styles.heroGrid} />
+      <div className={styles.heroGrid} aria-hidden="true" />
       <div className={styles.heroInner}>
         <div className={styles.heroCopy}>
           <div className={styles.kicker}>
             <span className={styles.kickerBar} />
-            PreToolUse permission gate for Claude Code
+            Permission gate · Claude Code plugin
           </div>
           <h1 className={styles.heroTitle}>
-            Every tool call
-            <br />
-            stops at the <span className={styles.heroMark}>fence</span>.
+            You decide what Claude&nbsp;Code is{' '}
+            <span className={styles.heroMark}>allowed to run</span>.
           </h1>
           <p className={styles.heroLede}>
-            fencepost intercepts each tool call Claude Code tries to make and
-            checks it against a YAML rule set — then <em>allows</em> it,{' '}
-            <em>asks</em> you, or <em>denies</em> it with an actionable
-            alternative. Curated presets, AST-aware bash analysis, a scratch
-            sandbox, and an audit trail. No runtime dependencies.
+            fencepost inspects <em>every</em> command, file edit, and tool call
+            Claude Code makes, <em>before</em> it happens, and resolves each one
+            to <em>allow</em>, <em>ask</em>, or <em>deny</em> from a YAML policy
+            you control. Bash is parsed with tree-sitter, not pattern-matched,
+            so the same command always lands the same way.
           </p>
           <div className={styles.heroActions}>
-            <Link className={styles.btnPrimary} to="/docs/intro">
-              Read the docs
-            </Link>
             <Link
-              className={styles.btnGhost}
+              className={styles.btnPrimary}
               to="/docs/getting-started/quick-start"
             >
-              Quick start ↗
+              Quick start
+            </Link>
+            <Link className={styles.btnGhost} to="/docs/intro">
+              How it works ↗
             </Link>
           </div>
-          <div className={styles.pillRow}>
-            <span className={`${styles.pill} ${styles.pillAllow}`}>allow</span>
-            <span className={styles.pillSep} />
-            <span className={`${styles.pill} ${styles.pillAsk}`}>ask</span>
-            <span className={styles.pillSep} />
-            <span className={`${styles.pill} ${styles.pillDeny}`}>deny</span>
+          <div className={styles.heroFacts}>
+            <span>Single self-contained binary</span>
+            <span className={styles.factSep} />
+            <span>Millisecond cold start</span>
+            <span className={styles.factSep} />
+            <span>Fail-closed by default</span>
           </div>
         </div>
 
-        <div className={styles.terminal}>
-          <div className={styles.terminalBar}>
-            <span />
-            <span />
-            <span />
-            <em>claude-code · fencepost hook</em>
-          </div>
-          <pre className={styles.terminalBody}>
-            <code>
-              <span className={styles.tDim}># Claude tries to run:</span>
-              {'\n'}
-              <span className={styles.tCmd}>$ rm -rf /tmp/build</span>
-              {'\n\n'}
-              <span className={styles.tDeny}>● DENY</span>{' '}
-              <span className={styles.tText}>
-                Fencepost: blocked — Recursive delete is
-              </span>
-              {'\n      '}
-              <span className={styles.tText}>
-                dangerous. Use this instead: delete
-              </span>
-              {'\n      '}
-              <span className={styles.tText}>specific files individually.</span>
-              {'\n\n'}
-              <span className={styles.tDim}># Next call:</span>
-              {'\n'}
-              <span className={styles.tCmd}>$ git push origin main</span>
-              {'\n\n'}
-              <span className={styles.tAsk}>● ASK</span>{' '}
-              <span className={styles.tText}>
-                'git push origin main' requires
-              </span>
-              {'\n      '}
-              <span className={styles.tText}>approval.</span>{' '}
-              <span className={styles.tDim}>[y/N]</span>
-              {'\n\n'}
-              <span className={styles.tCmd}>$ git status</span>
-              {'\n\n'}
-              <span className={styles.tAllow}>● ALLOW</span>{' '}
-              <span className={styles.tDim}>(silent fast path)</span>
-            </code>
-          </pre>
-        </div>
+        <Terminal />
       </div>
       <Fence className={styles.heroFence} />
     </header>
   );
 }
 
-type Tier = { label: string; sym: string; desc: string; cls: string };
-const tiers: Tier[] = [
-  { label: 'deny', sym: '01', desc: 'Hard blocks & smart checks', cls: 'deny' },
+/* ------------------------------------------------------------------ *
+ *  How it works — three plain steps.
+ * ------------------------------------------------------------------ */
+
+type Step = { n: string; title: string; body: ReactNode };
+const steps: Step[] = [
   {
-    label: 'checks',
-    sym: '02',
-    desc: 'Regex rules with alternatives',
-    cls: 'deny',
+    n: '01',
+    title: 'It sees the call',
+    body: (
+      <>
+        fencepost runs on Claude Code&apos;s <code>PreToolUse</code> hook, so it
+        intercepts every tool call — Bash, edits, MCP tools — the instant before
+        it would execute.
+      </>
+    ),
   },
   {
-    label: 'allow-checks',
-    sym: '03',
-    desc: 'Scoped exceptions win over ask',
-    cls: 'allow',
+    n: '02',
+    title: 'It checks your policy',
+    body: (
+      <>
+        The call is matched against a YAML rule set you own. Import curated
+        presets for <code>git</code>, <code>kubernetes</code>, <code>helm</code>{' '}
+        and more, then layer your own rules on top.
+      </>
+    ),
   },
-  { label: 'ask', sym: '04', desc: 'Prompt the human', cls: 'ask' },
-  { label: 'allow', sym: '05', desc: 'Silent fast path', cls: 'allow' },
-  { label: 'default', sym: '06', desc: 'Fallthrough posture', cls: 'ask' },
+  {
+    n: '03',
+    title: 'It returns a verdict',
+    body: (
+      <>
+        <em>allow</em> runs silently, <em>ask</em> prompts you, and <em>deny</em>{' '}
+        blocks the call — handing Claude a concrete alternative instead of a dead
+        end.
+      </>
+    ),
+  },
 ];
 
-function Tiers(): ReactNode {
+function HowItWorks(): ReactNode {
   return (
     <section className={styles.section}>
       <div className={styles.sectionHead}>
-        <span className={styles.sectionTag}>The decision model</span>
+        <span className={styles.sectionTag}>How it works</span>
         <h2 className={styles.sectionTitle}>
-          One command walks the fence, tier by tier.
+          One gate between Claude and your machine.
         </h2>
-        <p className={styles.sectionLede}>
-          The most restrictive matching tier wins, so you can never{' '}
-          <em>allow</em> your way past a <em>deny</em>. Bash is always parsed —
-          never trusted as a raw string.
-        </p>
       </div>
-      <div className={styles.tierRow}>
-        {tiers.map((t) => (
-          <div key={t.label} className={`${styles.tierCard} ${styles[t.cls]}`}>
-            <span className={styles.tierSym}>{t.sym}</span>
-            <span className={styles.tierLabel}>{t.label}</span>
-            <span className={styles.tierDesc}>{t.desc}</span>
+      <div className={styles.steps}>
+        {steps.map((s) => (
+          <div key={s.n} className={styles.step}>
+            <span className={styles.stepNum}>{s.n}</span>
+            <h3 className={styles.stepTitle}>{s.title}</h3>
+            <p className={styles.stepBody}>{s.body}</p>
           </div>
         ))}
       </div>
@@ -153,36 +207,96 @@ function Tiers(): ReactNode {
   );
 }
 
-type Feature = { title: string; body: string; to: string; meta: string };
+/* ------------------------------------------------------------------ *
+ *  The three decisions.
+ * ------------------------------------------------------------------ */
+
+type Decision = {
+  label: Verdict;
+  who: string;
+  body: string;
+};
+const decisions: Decision[] = [
+  {
+    label: 'allow',
+    who: 'nobody is interrupted',
+    body: 'The tool runs immediately and silently. Your fast path for the commands you trust.',
+  },
+  {
+    label: 'ask',
+    who: 'you approve',
+    body: 'Claude Code pauses and prompts you. The right call for anything reversible-but-risky.',
+  },
+  {
+    label: 'deny',
+    who: 'Claude is redirected',
+    body: 'The call is blocked and Claude is steered toward the safe alternative, not left to retry the wall.',
+  },
+];
+
+function Decisions(): ReactNode {
+  return (
+    <section className={`${styles.section} ${styles.decisionsSection}`}>
+      <div className={styles.sectionHead}>
+        <span className={styles.sectionTag}>The decision model</span>
+        <h2 className={styles.sectionTitle}>Three outcomes. Nothing fuzzy.</h2>
+        <p className={styles.sectionLede}>
+          Rules resolve in a fixed precedence, the same way every time. The most
+          restrictive matching tier wins, so you can never <em>allow</em> your
+          way past a <em>deny</em>.
+        </p>
+      </div>
+      <div className={styles.decisionRow}>
+        {decisions.map((d) => (
+          <div key={d.label} className={`${styles.decisionCard} ${styles[d.label]}`}>
+            <div className={styles.decisionTop}>
+              <span className={`${styles.dPill} ${styles[`d_${d.label}`]}`}>
+                {d.label}
+              </span>
+              <span className={styles.decisionWho}>{d.who}</span>
+            </div>
+            <p className={styles.decisionBody}>{d.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ *  Features.
+ * ------------------------------------------------------------------ */
+
+type Feature = { meta: string; title: string; body: string; to: string };
 const features: Feature[] = [
   {
     meta: 'presets',
     title: 'Composable presets',
-    body: 'Import curated rule sets for git, kubernetes, helm, ansible, filesystem and more with one line. Layer your own rules on top.',
+    body: 'Import battle-tested rule sets for git, kubernetes, helm, ansible and the filesystem with one line. Your own rules always layer on top.',
     to: '/docs/presets',
   },
   {
     meta: 'bash',
-    title: 'AST-aware bash',
-    body: 'Commands are parsed with tree-sitter, not pattern-matched. Reason about redirections, every argument, and even inline python or node.',
+    title: 'Real bash understanding',
+    body: 'Commands are parsed with tree-sitter, not matched as strings. fencepost reasons about redirections, every argument, and inline python -c or node -e.',
     to: '/docs/configuration/structured-bash-rules',
   },
   {
     meta: 'sandbox',
-    title: 'Scratch sandbox',
-    body: 'Funnel temp files into /tmp/claude and grant destructive permissions scoped to it — the rest of the filesystem stays gated.',
+    title: 'A scratch sandbox',
+    body: 'Funnel temp files into /tmp/claude and grant destructive permissions scoped to it. The rest of the filesystem stays gated.',
     to: '/docs/configuration/sandbox',
   },
   {
     meta: 'feedback',
-    title: 'Actionable denials',
-    body: 'A block is not a dead end. Denials steer Claude to the alternative instead of letting it retry the same wall.',
+    title: 'Denials that redirect',
+    body: 'A block is not a dead end. Every deny carries an alternative, steering Claude to the right command instead of letting it thrash.',
     to: '/docs/concepts/decision-model',
   },
   {
     meta: 'posture',
-    title: 'Fail-closed config',
-    body: 'A broken security config denies everything until a human fixes it. Un-checkable commands ask. Verify in CI with one command.',
+    title: 'Fail-closed safety',
+    body: 'A broken security config denies everything until a human fixes it. Un-checkable commands ask. Verify the whole policy in CI with one command.',
     to: '/docs/concepts/failure-posture',
   },
   {
@@ -217,6 +331,10 @@ function Features(): ReactNode {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ *  Config — small file, curated policy.
+ * ------------------------------------------------------------------ */
+
 function Config(): ReactNode {
   return (
     <section className={`${styles.section} ${styles.configSection}`}>
@@ -227,9 +345,12 @@ function Config(): ReactNode {
           <p className={styles.sectionLede}>
             Drop a single <code>.claude/fencepost.yaml</code>, or split rules
             across a <code>conf.d</code> directory by domain. Import presets as
-            the base; your rules always layer on top.
+            the base; your rules always win.
           </p>
-          <Link className={styles.btnPrimary} to="/docs/configuration/config-files">
+          <Link
+            className={styles.btnPrimary}
+            to="/docs/configuration/config-files"
+          >
             Configuration guide
           </Link>
         </div>
@@ -243,7 +364,7 @@ function Config(): ReactNode {
               {'  - '}
               <span className={styles.cStr}>claude</span>
               {'    '}
-              <span className={styles.cCmt}># allow built-ins + sandbox</span>
+              <span className={styles.cCmt}># built-ins + sandbox</span>
               {'\n'}
               {'  - '}
               <span className={styles.cStr}>git</span>
@@ -253,9 +374,13 @@ function Config(): ReactNode {
               {'\n\n'}
               <span className={styles.cKey}>default</span>:{' '}
               <span className={styles.cVal}>ask</span>
+              {'    '}
+              <span className={styles.cCmt}># nothing matched</span>
               {'\n'}
               <span className={styles.cKey}>onError</span>:{' '}
               <span className={styles.cVal}>ask</span>
+              {'  '}
+              <span className={styles.cCmt}># can&apos;t decide</span>
               {'\n\n'}
               <span className={styles.cKey}>tools</span>:{'\n'}
               {'  '}
@@ -277,6 +402,10 @@ function Config(): ReactNode {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ *  CTA.
+ * ------------------------------------------------------------------ */
+
 function CTA(): ReactNode {
   return (
     <section className={styles.cta}>
@@ -287,7 +416,10 @@ function CTA(): ReactNode {
         next session inside a perimeter you control.
       </p>
       <div className={styles.heroActions}>
-        <Link className={styles.btnPrimary} to="/docs/getting-started/installation">
+        <Link
+          className={styles.btnPrimary}
+          to="/docs/getting-started/installation"
+        >
           Install fencepost
         </Link>
         <Link
@@ -302,15 +434,15 @@ function CTA(): ReactNode {
 }
 
 export default function Home(): ReactNode {
-  const { siteConfig } = useDocusaurusContext();
   return (
     <Layout
       title="A permission gate for Claude Code"
-      description={siteConfig.tagline}
+      description="fencepost inspects every command, edit, and tool call Claude Code makes and resolves each one to allow, ask, or deny from a YAML policy you control — with real tree-sitter bash parsing."
     >
       <main className={styles.main}>
         <Hero />
-        <Tiers />
+        <HowItWorks />
+        <Decisions />
         <Features />
         <Config />
         <CTA />
