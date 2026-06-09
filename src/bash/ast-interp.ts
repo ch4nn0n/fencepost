@@ -9,9 +9,6 @@ import { logger } from "../logger.js";
 import type { EvalResult, FencepostConfig, InterpreterConfig } from "../types.js";
 import type { ExtractedCommand } from "./ast.js";
 
-import pythonWasmPath from "../../node_modules/tree-sitter-wasms/out/tree-sitter-python.wasm" with { type: "file" };
-import javascriptWasmPath from "../../node_modules/tree-sitter-wasms/out/tree-sitter-javascript.wasm" with { type: "file" };
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TsNode = any;
 
@@ -23,12 +20,12 @@ interface LangSpec {
 
 const LANGS: Record<string, LangSpec> = {
   python: {
-    wasm: pythonWasmPath,
+    wasm: "tree-sitter-python.wasm",
     callNode: "call",
     writeCallees: {}, // python writes handled specially (open + mode)
   },
   javascript: {
-    wasm: javascriptWasmPath,
+    wasm: "tree-sitter-javascript.wasm",
     callNode: "call_expression",
     writeCallees: {
       "fs.writeFileSync": 0,

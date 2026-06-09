@@ -1,7 +1,12 @@
 import { load as yamlLoad } from "js-yaml";
 import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { logger } from "./logger.js";
+
+const moduleDir = dirname(fileURLToPath(import.meta.url));
 import type {
   FencepostConfig,
   ResolvedConfig,
@@ -472,7 +477,7 @@ function presetSearchDirs(): string[] {
   } catch {
     /* process.execPath unavailable; ignore */
   }
-  dirs.push(join(import.meta.dir, "..", "presets"));
+  dirs.push(join(moduleDir, "..", "presets"));
   return dirs;
 }
 
@@ -485,7 +490,7 @@ async function resolvePreset(name: string, importedFrom: string): Promise<string
   for (const dir of presetSearchDirs()) {
     for (const ext of [".yaml", ".yml"]) {
       const candidate = join(dir, name + ext);
-      if (await Bun.file(candidate).exists()) return candidate;
+      if (existsSync(candidate)) return candidate;
     }
   }
   note("warning", importedFrom, `imported preset not found: ${name}`);
@@ -518,7 +523,7 @@ async function loadYamlFile(
 ): Promise<{ config: FencepostConfig; imports: string[] } | null> {
   let text: string;
   try {
-    text = await Bun.file(filePath).text();
+    text = await readFile(filePath, "utf8");
   } catch (err) {
     note("error", filePath, `could not read file: ${(err as Error).message}`);
     return null;
@@ -673,7 +678,7 @@ async function resolveInternal(cwd: string): Promise<ResolvedConfig> {
       host = { ...dirResult, from: confDir };
       break;
     }
-    if (await Bun.file(singleFile).exists()) {
+    if (existsSync(singleFile)) {
       const loaded = await loadYamlFile(singleFile);
       // Even when broken (loaded === null) we treat this as "config present":
       // an error was recorded and we stop searching, so the run fails closed.

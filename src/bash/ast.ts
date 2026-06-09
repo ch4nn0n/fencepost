@@ -7,12 +7,12 @@
 // error returns ok:false and the caller fails open.
 
 import { logger } from "../logger.js";
+import { readWasm } from "../wasm.js";
 
-// Embed the wasm so it survives `bun build --compile`. The import yields a path
-// (real in dev, embedded in the compiled binary); we read the bytes and hand
-// them to the parser, avoiding Emscripten's file-location logic entirely.
-import runtimeWasmPath from "../../node_modules/web-tree-sitter/tree-sitter.wasm" with { type: "file" };
-import bashWasmPath from "../../node_modules/tree-sitter-wasms/out/tree-sitter-bash.wasm" with { type: "file" };
+// Tree-sitter grammars are loaded from wasm at runtime. We read the bytes
+// ourselves (see ../wasm.ts) and hand them to the parser, avoiding Emscripten's
+// file-location logic entirely so the same code runs under Node and Bun.
+const BASH_WASM = "tree-sitter-bash.wasm";
 
 export interface Redirect {
   op: string; // ">", ">>", "<", "&>", ">|" ...
@@ -48,7 +48,7 @@ async function getRuntime(): Promise<TsParser> {
   if (!runtimeInit) {
     runtimeInit = (async () => {
       const Parser = (await import("web-tree-sitter")).default;
-      const bytes = new Uint8Array(await Bun.file(runtimeWasmPath).arrayBuffer());
+      const bytes = await readWasm("tree-sitter.wasm");
       await Parser.init({ wasmBinary: bytes });
       return Parser;
     })();
@@ -59,21 +59,21 @@ async function getRuntime(): Promise<TsParser> {
 const grammarCache = new Map<string, Promise<TsParser>>();
 
 /**
- * Load a parser for a grammar wasm path, cached per process. Used for bash here
- * and for nested interpreter grammars (feature 21).
+ * Load a parser for a grammar wasm file (by basename), cached per process. Used
+ * for bash here and for nested interpreter grammars (feature 21).
  */
-export async function loadGrammar(wasmPath: string): Promise<TsParser> {
-  let cached = grammarCache.get(wasmPath);
+export async function loadGrammar(wasmFile: string): Promise<TsParser> {
+  let cached = grammarCache.get(wasmFile);
   if (!cached) {
     cached = (async () => {
       const Parser = await getRuntime();
-      const bytes = new Uint8Array(await Bun.file(wasmPath).arrayBuffer());
+      const bytes = await readWasm(wasmFile);
       const lang = await Parser.Language.load(bytes);
       const parser = new Parser();
       parser.setLanguage(lang);
       return parser;
     })();
-    grammarCache.set(wasmPath, cached);
+    grammarCache.set(wasmFile, cached);
   }
   return cached;
 }
@@ -160,7 +160,7 @@ export async function extractBash(command: string): Promise<ExtractResult> {
     hadSequencing: false,
   };
   try {
-    const parser = await loadGrammar(bashWasmPath);
+    const parser = await loadGrammar(BASH_WASM);
     const tree = parser.parse(command);
 
     const commands: ExtractedCommand[] = [];

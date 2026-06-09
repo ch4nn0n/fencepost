@@ -99,9 +99,10 @@ export async function runAuditSkill(cwd: string): Promise<void> {
 
 async function loadAuditLog(logPath: string): Promise<AuditEntry[]> {
   try {
-    const file = Bun.file(logPath);
-    if (!(await file.exists())) return [];
-    const text = await file.text();
+    const { readFile } = await import("node:fs/promises");
+    const { existsSync } = await import("node:fs");
+    if (!existsSync(logPath)) return [];
+    const text = await readFile(logPath, "utf8");
     return text
       .trim()
       .split("\n")

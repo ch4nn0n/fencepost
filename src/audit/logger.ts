@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { logger } from "../logger.js";
 import type { AuditEntry } from "../types.js";
 
@@ -7,15 +7,9 @@ export async function writeAuditEntry(entry: AuditEntry, cwd: string): Promise<v
   const logPath = join(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
   try {
     const line = JSON.stringify(entry) + "\n";
-    const file = Bun.file(logPath);
 
-    // Ensure the directory exists
-    const { mkdir } = await import("node:fs/promises");
-    const dir = logPath.substring(0, logPath.lastIndexOf("/"));
-    await mkdir(dir, { recursive: true });
-
-    // Append to the file using Node's fs
-    const { appendFile } = await import("node:fs/promises");
+    const { mkdir, appendFile } = await import("node:fs/promises");
+    await mkdir(dirname(logPath), { recursive: true });
     await appendFile(logPath, line, "utf8");
   } catch (err) {
     // Never block or crash on audit failures

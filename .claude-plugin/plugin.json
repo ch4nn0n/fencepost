@@ -1,7 +1,11 @@
 {
   "name": "fencepost",
   "version": "0.1.0",
-  "description": "Configurable permission checker for Claude Code tools. Intercepts every tool call and evaluates it against a YAML rule set — allowing, asking, or denying with actionable feedback.",
+  "description": "Configurable permission gate for Claude Code tool calls. Intercepts every tool call and evaluates it against a YAML rule set, allowing, asking, or denying with actionable feedback.",
+  "author": { "name": "ch4nn0n" },
+  "homepage": "https://ch4nn0n.github.io/fencepost/",
+  "repository": "https://github.com/ch4nn0n/fencepost",
+  "license": "GPL-3.0-or-later",
   "hooks": {
     "PreToolUse": [
       {

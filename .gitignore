@@ -1,12 +1,10 @@
-# compiled binary
-bin/fencepost
-
 # dependencies (bun install)
 node_modules
 
 # output
+# NOTE: dist/ is the shipped plugin artifact (committed on purpose).
 out
-dist
+bin
 *.tgz
 
 # code coverage
