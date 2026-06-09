@@ -302,9 +302,8 @@
   padding-left: 0.55rem;
 }
 .steerArrow {
-  font-family: var(--fp-font-mono);
   color: #9dc06d;
-  font-weight: 700;
+  flex-shrink: 0;
 }
 .steer code {
   font-family: var(--fp-font-mono);
@@ -581,10 +580,32 @@
 }
 .featureArrow {
   margin-top: auto;
+  display: inline-flex;
+  align-items: center;
   font-family: var(--fp-font-display);
   font-size: 0.76rem;
   font-weight: 600;
   color: var(--fp-accent);
+}
+
+/* "Go" cue icons (lucide). Crisp vector arrows, sized via the `size`
+ * prop; one place to control spacing and the hover nudge. */
+.icon,
+.iconUp {
+  margin-left: 0.4em;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+.featureCard:hover .icon {
+  transform: translateX(3px);
+}
+.btnPrimary:hover .icon,
+.btnGhost:hover .icon {
+  transform: translateX(2px);
+}
+.btnPrimary:hover .iconUp,
+.btnGhost:hover .iconUp {
+  transform: translate(2px, -2px);
 }
 
 /* ---- config ------------------------------------------------- */

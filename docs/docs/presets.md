@@ -30,8 +30,8 @@ Each name resolves to `<presets-dir>/<name>.yaml`. Presets deliberately **do not
 
 ```
 DEFAULT_CONFIG
-  ⨁ preset[0] ⨁ preset[1] ⨁ …      (preset base, in import order)
-    ⨁ your config                   (your rules win)
+  + preset[0] + preset[1] + ...     (preset base, in import order)
+    + your config                   (your rules win)
 ```
 
 1. Your config is resolved as usual (single file or `conf.d`).
@@ -60,7 +60,9 @@ Imported preset paths show up in [provenance](./reference/cli-and-audit.md), lis
 | **`helm`** | Allows list/status/template/lint/diff; asks before install/upgrade/uninstall; denies `helm upgrade --force`. |
 | **`helmfile`** | Allows diff/template/lint; asks before apply/sync; denies `helmfile destroy`. |
 | **`ansible`** | Normalises inventory/connection flags; allows read-only tooling; asks before playbook runs; denies ad-hoc shell/command/raw modules. |
+| **`gh`** | Allows read-only `gh` inspection (repos, PRs, issues, runs, releases); asks before writes (create/merge/edit, workflow runs, secrets, auth, codespaces, `gh api`); denies `gh repo delete` / `gh issue delete`. |
 | **`context7`** | Allows the read-only Context7 MCP doc-lookup tools (`mcp__*context7*`). |
+| **`playwright`** | Allows read-only Playwright MCP tools (snapshot, screenshot, navigate, read console/network); asks before page interaction (click, type, fill, upload, evaluate); denies `browser_run_code_unsafe`. |
 | **`filesystem`** | Allows read-only/inspection shell commands (`ls`, `cat`, `grep`, `find`, `jq`, …); guards `find -delete`/`-exec` and `sed -i`. |
 | **`python-safety`** | Conservative [inline-interpreter](./configuration/interpreters.md) defaults for Python and JS: ask on subprocess/eval/exec, deny destructive deletes/writes outside the sandbox. |
 

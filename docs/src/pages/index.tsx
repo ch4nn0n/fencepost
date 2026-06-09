@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
+import { ArrowRight, ArrowUpRight } from 'lucide-react';
 import styles from './index.module.css';
 
 /* A row of fence posts — also the bash pipe operator. */
@@ -81,7 +82,7 @@ function Terminal(): ReactNode {
             </div>
             {it.steer && (
               <div className={styles.steer}>
-                <span className={styles.steerArrow}>→</span>
+                <ArrowRight className={styles.steerArrow} size={15} strokeWidth={2.5} aria-hidden="true" />
                 <code>{it.steer}</code>
               </div>
             )}
@@ -125,7 +126,8 @@ function Hero(): ReactNode {
               Quick start
             </Link>
             <Link className={styles.btnGhost} to="/docs/intro">
-              How it works ↗
+              How it works
+              <ArrowRight className={styles.icon} size={17} strokeWidth={2.5} aria-hidden="true" />
             </Link>
           </div>
           <div className={styles.heroFacts}>
@@ -323,7 +325,10 @@ function Features(): ReactNode {
             </span>
             <h3 className={styles.featureTitle}>{f.title}</h3>
             <p className={styles.featureBody}>{f.body}</p>
-            <span className={styles.featureArrow}>Learn more →</span>
+            <span className={styles.featureArrow}>
+              Learn more
+              <ArrowRight className={styles.icon} size={17} strokeWidth={2.5} aria-hidden="true" />
+            </span>
           </Link>
         ))}
       </div>
@@ -426,7 +431,8 @@ function CTA(): ReactNode {
           className={styles.btnGhost}
           href="https://github.com/ch4nn0n/fencepost"
         >
-          View on GitHub ↗
+          View on GitHub
+          <ArrowUpRight className={styles.iconUp} size={17} strokeWidth={2.5} aria-hidden="true" />
         </Link>
       </div>
     </section>
