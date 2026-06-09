@@ -1,80 +1,100 @@
 ---
 title: Installation
-description: Install fencepost as a Claude Code plugin and build the binary.
+description: Install fencepost as a Claude Code plugin.
 ---
 
 # Installation
 
-fencepost ships as a Claude Code plugin: a small manifest that registers the hooks, a compiled binary, and a bundled set of presets.
+fencepost ships as a Claude Code plugin: a manifest that registers the hooks, a small committed JS bundle, the tree-sitter grammars, and a set of presets. There's **no build step for users** and no 100 MB binary to download.
 
 ## Requirements
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code)
-- [Bun](https://bun.sh) — only to **build** the binary. Once compiled, the binary is self-contained and needs no runtime.
+- A JavaScript runtime on your `PATH` — **Node** (which you already have if you run Claude Code via npm) or **Bun**. The hook wrapper uses whichever it finds.
 
-## 1. Get the source
+## Install from the marketplace (recommended)
+
+fencepost's repository doubles as a single-plugin marketplace, so you can add it and install in two commands:
+
+```text
+/plugin marketplace add ch4nn0n/fencepost
+/plugin install fencepost@fencepost
+```
+
+That's it — the plugin is fetched and cached, the `PreToolUse` and `SessionStart` hooks register, and the gate is live on the next tool call. Update later with `/plugin marketplace update fencepost`.
+
+## Try it locally without installing
+
+To test against a clone (for development, or before committing to installing), point Claude Code at the directory:
 
 ```bash
 git clone https://github.com/ch4nn0n/fencepost.git
-cd fencepost
-bun install
+claude --plugin-dir ./fencepost
 ```
 
-## 2. Build the binary
-
-```bash
-bun run build
-# → bin/fencepost  (standalone, no Bun/Node required at runtime)
-```
-
-The build uses `bun build --compile`, producing a single executable. Keeping it dependency-free matters: the hook runs on *every* tool call, so cold-start time is part of the budget.
-
-## 3. Install as a plugin
-
-fencepost follows the standard Claude Code plugin layout:
+## What's in the plugin
 
 ```
 fencepost/
 ├── .claude-plugin/
-│   └── plugin.json          # registers PreToolUse + SessionStart hooks
+│   ├── plugin.json          # registers PreToolUse + SessionStart hooks
+│   └── marketplace.json     # lets the repo be added as a marketplace
 ├── hooks/
-│   ├── pre-tool-use.sh      # thin wrapper → bin/fencepost evaluate
-│   └── session-start.sh     # → bin/fencepost sessionstart
-├── bin/fencepost            # the compiled binary
+│   ├── pre-tool-use.sh      # wrapper → node dist/index.js evaluate
+│   └── session-start.sh     # → node dist/index.js sessionstart
+├── dist/
+│   ├── index.js             # the committed JS bundle (~280 KB)
+│   └── *.wasm               # tree-sitter grammars
 ├── presets/                 # bundled importable rule sets
 └── skills/audit.md          # the /audit slash command
 ```
 
-Point Claude Code at the plugin directory (clone location). The manifest registers two hooks:
+The two hooks:
 
 - **`PreToolUse`** → evaluates each tool call.
 - **`SessionStart`** → injects [session guidance](../configuration/guidance-and-chaining.md) and prepares the `/tmp/claude` sandbox.
 
-The hook entries call thin shell wrappers rather than the binary directly. Each wrapper resolves the binary relative to its own location and exports `FENCEPOST_PRESETS_DIR` so bundled presets resolve no matter where the plugin lives:
+The manifest points at thin shell wrappers rather than the bundle directly. Each wrapper finds a runtime, resolves the bundle relative to its own location, and exports `FENCEPOST_PRESETS_DIR` so bundled presets resolve no matter where the plugin is installed:
 
 ```bash title="hooks/pre-tool-use.sh"
 #!/usr/bin/env bash
-HERE="$(dirname "$0")"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 export FENCEPOST_PRESETS_DIR="${FENCEPOST_PRESETS_DIR:-$HERE/../presets}"
-exec "$HERE/../bin/fencepost" evaluate
+RUNNER="$(command -v node || command -v bun || true)"
+[ -z "$RUNNER" ] && exit 0   # fail open if no runtime is available
+exec "$RUNNER" "$HERE/../dist/index.js" evaluate
 ```
 
-## 4. Verify it works
+## Verify it works
 
-With no config present, fencepost is a no-op (it [fails open](../concepts/failure-posture.md) to `default: ask`). Confirm the binary runs:
+With no config present, fencepost is a no-op (it [fails open](../concepts/failure-posture.md) to `default: ask`). You can run the bundle directly to confirm:
 
 ```bash
 echo '{"tool_name":"Read","tool_input":{},"session_id":"t","cwd":"/tmp","hook_event_name":"PreToolUse","tool_use_id":"x"}' \
-  | ./bin/fencepost evaluate
+  | node dist/index.js evaluate
 # (no output = allow)
 ```
 
 Then add a config and check it compiles cleanly:
 
 ```bash
-./bin/fencepost verify
+node dist/index.js verify
 # exits non-zero if the config has errors — suitable for CI / pre-commit
 ```
+
+## Building from source (contributors)
+
+Only needed if you're changing fencepost itself. Requires [Bun](https://bun.sh):
+
+```bash
+git clone https://github.com/ch4nn0n/fencepost.git
+cd fencepost
+bun install
+bun run build     # bundles src/ → dist/index.js and copies the wasm grammars
+bun test
+```
+
+`dist/` is committed on purpose — it's the artifact the plugin ships — so rebuild and commit it whenever you change `src/`.
 
 ## Next
 

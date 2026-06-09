@@ -42,7 +42,7 @@ Claude Code  ──tool call──▶  PreToolUse hook  ──▶  fencepost
                                           allow │ ask │ deny
 ```
 
-fencepost is a single self-contained binary (compiled with `bun build --compile`) — no Node, Bun, or npm needed at runtime, and a cold start measured in milliseconds because it runs on every call.
+fencepost ships as a small JS bundle (~280 KB plus the tree-sitter grammars) that runs on Node or Bun — no build step for users, no large binary to download, and the same code on every platform.
 
 ## Where to go next
 

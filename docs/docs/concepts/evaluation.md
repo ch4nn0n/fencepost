@@ -139,4 +139,4 @@ The alternative is always presented first; the manual run is a secondary "if you
 
 ## Performance
 
-fencepost runs on every tool call, so it's built to be fast: a self-contained binary with no JS runtime to boot, and a thin pipeline. The bash AST adds ~75 ms only when a Bash command is evaluated; [nested interpreter](../configuration/interpreters.md) grammars load (~55 ms) only when inline code is actually detected. A plain `Read` or `ls` pays none of that.
+fencepost runs on every tool call, so it's built to be fast: a small bundle and a thin pipeline. The bash AST adds ~75 ms only when a Bash command is evaluated; [nested interpreter](../configuration/interpreters.md) grammars load (~55 ms) only when inline code is actually detected. A plain `Read` or `ls` pays none of that.

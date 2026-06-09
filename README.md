@@ -26,26 +26,25 @@ A denial isn't a dead end: fencepost steers Claude toward the suggested alternat
 - **Fail-closed safety.** A broken security config denies everything until a human fixes it, rather than silently degrading.
 - **An audit trail.** Every decision is logged; the `/audit` skill turns real usage into concrete config suggestions.
 
-No runtime dependencies — fencepost compiles to a single self-contained binary.
+fencepost ships as a small committed JS bundle (~280 KB plus the tree-sitter grammars), so there's no build step for users and no large binary to download. It runs on **Node** (which you already have if you run Claude Code via npm) or **Bun**.
 
 ## Install
 
-### From a release (no Bun required)
+The repository doubles as a single-plugin marketplace:
 
-Download the archive for your platform from the [Releases](https://github.com/ch4nn0n/fencepost/releases) page. Each archive is a ready-to-install plugin (binary + manifest + hooks + presets). Point Claude Code at the extracted directory.
+```text
+/plugin marketplace add ch4nn0n/fencepost
+/plugin install fencepost@fencepost
+```
 
-### From source
-
-Requires [Bun](https://bun.sh).
+The hooks register and the gate is live on the next tool call. To try it against a clone without installing:
 
 ```bash
 git clone https://github.com/ch4nn0n/fencepost.git
-cd fencepost
-bun install
-bun run build        # → bin/fencepost (standalone)
+claude --plugin-dir ./fencepost
 ```
 
-Then point Claude Code at the repository directory; the plugin manifest registers the `PreToolUse` and `SessionStart` hooks.
+See the [installation guide](https://ch4nn0n.github.io/fencepost/docs/getting-started/installation) for details.
 
 ## Quick start
 
@@ -82,9 +81,11 @@ See the [preset reference](https://ch4nn0n.github.io/fencepost/docs/presets).
 bun install
 bun test             # run the test suite
 bun run typecheck    # tsc --noEmit
-bun run build        # compile the binary
+bun run build        # bundle src/ → dist/index.js (+ wasm grammars)
 bun run dev          # run the entry point directly
 ```
+
+`dist/` is committed on purpose — it's the artifact the plugin ships — so rebuild and commit it whenever you change `src/`.
 
 The documentation site lives in [`docs/`](./docs) (Docusaurus):
 
@@ -97,7 +98,7 @@ bun run build        # static site → docs/build/
 
 ## Releases
 
-Pushing a `v*` tag triggers the [release workflow](./.github/workflows/release.yml), which cross-compiles binaries for Linux, macOS, and Windows (x64 + arm64) and attaches per-platform plugin archives to a GitHub Release.
+Pushing a `v*` tag triggers the [release workflow](./.github/workflows/release.yml), which checks the tag matches `package.json`, asserts the committed `dist/` is up to date, and attaches a ready-to-install plugin archive to a GitHub Release.
 
 ```bash
 git tag v0.1.0

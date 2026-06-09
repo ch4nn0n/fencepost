@@ -1,29 +1,29 @@
 ---
 title: CLI & audit
-description: The fencepost binary subcommands, the audit log, and the /audit skill.
+description: The fencepost subcommands, the audit log, and the /audit skill.
 ---
 
 # CLI & audit
 
-The compiled `fencepost` binary is both the hook engine and a small CLI for inspecting config and tuning rules.
+The fencepost bundle is both the hook engine and a small CLI for inspecting config and tuning rules. Invoke it with your runtime — `node dist/index.js <subcommand>` (or `bun`). The examples below use `fencepost` as shorthand for that.
 
 ## Subcommands
 
 ```bash
 # Hook mode (default) — reads stdin, writes the decision to stdout.
-fencepost evaluate
+node dist/index.js evaluate
 
 # SessionStart mode — reads stdin, writes guidance context.
-fencepost sessionstart
+node dist/index.js sessionstart
 
 # Print the resolved config: sources, errors, warnings, effective JSON.
-fencepost config [--cwd /path/to/project]
+node dist/index.js config
 
 # Same report, but exit non-zero if there are errors. For CI / pre-commit.
-fencepost verify
+node dist/index.js verify
 
 # Read the audit log and print an analysis.
-fencepost audit [--path .claude/fencepost/logs/audit.jsonl]
+node dist/index.js audit [--path .claude/fencepost/logs/audit.jsonl]
 ```
 
 `evaluate` and `sessionstart` are what the plugin hooks call. `config`, `verify`, and `audit` are for you.
@@ -33,7 +33,7 @@ fencepost audit [--path .claude/fencepost/logs/audit.jsonl]
 Because a [broken config fails closed](../concepts/failure-posture.md), catching mistakes *before* they ship is worth automating:
 
 ```yaml title=".github/workflows/ci.yml (excerpt)"
-- run: ./bin/fencepost verify
+- run: node dist/index.js verify
 ```
 
 It exits non-zero on any error (invalid `default`/`onError`, YAML syntax error, non-mapping top level) and prints the effective config so reviewers can see what's enforced.

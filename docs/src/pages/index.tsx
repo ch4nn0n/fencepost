@@ -129,9 +129,9 @@ function Hero(): ReactNode {
             </Link>
           </div>
           <div className={styles.heroFacts}>
-            <span>Single self-contained binary</span>
+            <span>Tiny ~280&nbsp;KB bundle</span>
             <span className={styles.factSep} />
-            <span>Millisecond cold start</span>
+            <span>Runs on Node or Bun</span>
             <span className={styles.factSep} />
             <span>Fail-closed by default</span>
           </div>

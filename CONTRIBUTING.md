@@ -17,7 +17,7 @@ bun install
 ```bash
 bun test             # run the test suite (bun:test)
 bun run typecheck    # tsc --noEmit
-bun run build        # compile the standalone binary → bin/fencepost
+bun run build        # bundle src/ → dist/index.js (+ wasm grammars)
 bun run dev          # run the entry point directly
 ```
 
@@ -25,9 +25,9 @@ Before opening a pull request, make sure:
 
 - `bun test` passes (and add tests for new behaviour — the suite lives in [`test/`](./test)).
 - `bun run typecheck` is clean.
-- `bun run build` succeeds.
+- `bun run build` succeeds, and you've **committed the updated `dist/`** (it's the artifact the plugin ships, so CI fails if it's stale).
 
-CI runs all three on every push and pull request.
+CI runs all of these on every push and pull request.
 
 ## Project layout
 
