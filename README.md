@@ -98,12 +98,7 @@ bun run build        # static site → docs/build/
 
 ## Releases
 
-Pushing a `v*` tag triggers the [release workflow](./.github/workflows/release.yml), which checks the tag matches `package.json`, asserts the committed `dist/` is up to date, and attaches a ready-to-install plugin archive to a GitHub Release.
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+Releases are automated with [release-please](https://github.com/googleapis/release-please). Write [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, …); release-please maintains a **release PR** that bumps the version (in both `package.json` and `.claude-plugin/plugin.json`) and updates `CHANGELOG.md`. Merging that PR tags the release and publishes a ready-to-install plugin archive.
 
 ## License
 

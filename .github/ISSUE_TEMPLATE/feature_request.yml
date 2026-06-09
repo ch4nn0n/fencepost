@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a new rule type, preset, or capability.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: What can't you express or do today? What command or tool slips through, or gets gated when it shouldn't?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should fencepost do? If it's config, sketch the YAML you'd want to write.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing rules/presets you tried, and why they fall short.
