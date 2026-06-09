@@ -1,0 +1,8 @@
+name: fencepost CodeQL config
+
+# Focus analysis on the engine and its scripts/tests. The generated bundle,
+# the docs site, and dependencies are not first-party source worth scanning.
+paths-ignore:
+  - dist
+  - docs
+  - node_modules
