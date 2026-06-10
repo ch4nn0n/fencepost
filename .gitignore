@@ -16,6 +16,12 @@ logs
 _.log
 report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
+# secrets / keys — never commit (e.g. the release GitHub App private key)
+*.pem
+*.key
+*.p12
+*.pfx
+
 # dotenv environment variable files
 .env
 .env.development.local

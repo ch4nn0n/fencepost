@@ -16,11 +16,22 @@ jobs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
+      # Authenticate as a GitHub App rather than the default GITHUB_TOKEN, so the
+      # release PR/commits trigger workflows (CI + PR-title) and the required
+      # status checks actually run on it.
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       # Maintains a "release PR" from Conventional Commits. Merging it bumps the
       # version (package.json + .claude-plugin/plugin.json), updates CHANGELOG.md,
       # tags the commit, and creates a GitHub release.
       - uses: googleapis/release-please-action@v4
         id: rp
+        with:
+          token: ${{ steps.app-token.outputs.token }}
 
   publish:
     name: Publish plugin archive
