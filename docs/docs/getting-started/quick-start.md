@@ -96,6 +96,8 @@ After a while, let fencepost tell you what to change:
 
 The [audit skill](../reference/cli-and-audit.md) reads the decision log and suggests promotions (commands you keep approving → move to `allow`), flags dead rules, and prints the effective config with provenance.
 
+To gate a tool that has no bundled preset, run `/preset <tool>` — it reads the tool's real command surface and builds the rules into your config. See [generating rules for a new tool](../presets.md#generating-rules-for-a-new-tool).
+
 ## What's next
 
 - **[The decision model](../concepts/decision-model.md)** — exactly how a command resolves.

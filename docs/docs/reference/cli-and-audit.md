@@ -1,6 +1,6 @@
 ---
 title: CLI & audit
-description: The fencepost subcommands, the audit log, and the /audit skill.
+description: The fencepost subcommands, the audit log, and the bundled skills.
 ---
 
 # CLI & audit
@@ -128,3 +128,12 @@ allow:
 ```
 
 The loop is: run a while, `/audit`, promote the safe asks, prune the dead rules, tighten anything noisy — and repeat.
+
+## The `/preset` and `/contribute-preset` skills
+
+Two more slash commands ship with the plugin, for tools that have no bundled preset yet:
+
+- **`/preset <tool>`** builds rules for a CLI tool or MCP server by reading its **real** command surface — enumerating subcommands from the installed binary's `--help` (or the connected MCP server's live tool list) rather than guessing from memory, since subcommands vary by version. It proposes an allow / ask / deny classification for your review, merges the result into your own `.claude/fencepost.yaml`, and validates it with `fencepost verify` plus per-tier `evaluate` spot-checks. It never sets `default`.
+- **`/contribute-preset <name>`** packages a rule set as a bundled preset and opens a pull request to the fencepost repository: it writes `presets/<name>.yaml`, updates the docs, runs the checks from `CONTRIBUTING.md`, and creates the PR with `gh`.
+
+See [Presets → generating rules for a new tool](../presets.md#generating-rules-for-a-new-tool).
