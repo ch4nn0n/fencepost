@@ -1,12 +1,11 @@
 # Fencepost preset: git
-#
-# Import with:
-#   import:
-#     - git
-#
-# Allows everyday read/write porcelain, asks before destructive or
-# history-rewriting operations, and denies a few clearly dangerous patterns.
-# This preset does not set `default` — leave that to your own config.
+
+meta:
+  title: Git
+  description: >-
+    Allows everyday read/write porcelain, asks before destructive or
+    history-rewriting operations, and guards force-pushes, hard resets and
+    working-tree wipes.
 
 tools:
   bash:

@@ -42,7 +42,7 @@ CI runs all of these on every push and pull request.
 
 ## Adding or changing a preset
 
-Presets are plain YAML in [`presets/`](./presets). Keep them focused on a single tool, and **do not set `default`** — that belongs to the user's own config. Document new presets in `docs/docs/presets.md`.
+Presets are plain YAML in [`presets/`](./presets). Keep them focused on a single tool, and **do not set `default`** — that belongs to the user's own config. Every preset needs a `meta:` block (`title` + `description`); the docs site generates a page per preset from it (plus the full YAML source) at build time, so there is no docs table to maintain.
 
 The fastest path is the `/contribute-preset` skill: it reads a tool's real command surface, classifies it, writes the preset and docs, validates, and opens the PR for you. (Use `/preset` to generate rules for your own config without contributing them.) Either way, **verify subcommands against the installed binary rather than from memory** — they vary by version.
 

@@ -1,19 +1,15 @@
-# Fencepost preset: playwright (MCP)
-#
-# Import with:
-#   import:
-#     - playwright
-#
-# The Playwright MCP server drives a real browser. Inspection and navigation
-# tools (snapshot, screenshot, read console/network, switch tabs) are allowed
-# silently; tools that interact with the page or reach the filesystem (click,
-# type, fill forms, upload files, evaluate JS) ask first; and the arbitrary
-# code-execution tool is denied outright.
-#
+# Fencepost preset: playwright
+
+meta:
+  title: Playwright (MCP)
+  description: >-
+    Browser inspection and navigation tools run silently, tools that interact
+    with the page or reach the filesystem ask first, and the arbitrary
+    code-execution tool is denied outright.
+
 # The globs match the tool names regardless of how the MCP server is namespaced
 # in your install (e.g. mcp__playwright__browser_click or
 # mcp__plugin_playwright_playwright__browser_click).
-
 tools:
   deny:
     - tool: "mcp__*playwright*browser_run_code_unsafe"

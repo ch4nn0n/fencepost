@@ -1,20 +1,12 @@
 # Fencepost preset: filesystem
-#
-# Import with:
-#   import:
-#     - filesystem
-#
-# Read-only / inspection shell commands: directory listing, file viewing, and
-# text processing. Mutating commands (rm, mv, cp, mkdir, chmod, chown, ln, ...)
-# are deliberately excluded — they belong to the `claude` sandbox or a
-# tool-specific policy, not a "safe basics" set.
-#
-# Borderline tools (find, sed) are allowed but their destructive flags are
-# denied via checks.
-#
-# Limitation: this is prefix matching, and shell output redirection (>, >>) is
-# NOT parsed. `echo x > /etc/hosts` would still match the `echo` allow and write
-# a file. Keep destructive-write rules in place if that matters to you.
+
+meta:
+  title: Filesystem
+  description: >-
+    Read-only and inspection shell commands: directory listing, file viewing,
+    and text processing. Mutating commands (rm, mv, chmod, ...) are
+    deliberately excluded, and the destructive flags of find and sed are
+    guarded.
 
 tools:
   bash:
@@ -26,6 +18,9 @@ tools:
         description: "sed -i edits files in place."
         alternative: "Run sed without -i to preview the output, then write the result explicitly."
 
+    # Limitation: this is prefix matching, and shell output redirection (>, >>)
+    # is NOT parsed. `echo x > /etc/hosts` would still match the `echo` allow
+    # and write a file. Keep destructive-write rules in place if that matters.
     allow:
       # Navigation / listing
       - ls

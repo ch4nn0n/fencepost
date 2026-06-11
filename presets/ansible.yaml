@@ -1,12 +1,11 @@
 # Fencepost preset: ansible
-#
-# Import with:
-#   import:
-#     - ansible
-#
-# Normalises inventory/connection flags so rules match regardless of target,
-# allows read-only and dry-run tooling, and asks before runs that change
-# remote state.
+
+meta:
+  title: Ansible
+  description: >-
+    Normalises inventory and connection flags so rules match regardless of
+    target, allows read-only and dry-run tooling, and asks before runs that
+    change remote state.
 
 tools:
   bash:

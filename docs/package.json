@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
-    "start": "docusaurus start",
-    "build": "docusaurus build",
+    "generate-preset-docs": "bun scripts/generate-preset-docs.ts",
+    "start": "bun scripts/generate-preset-docs.ts && docusaurus start",
+    "build": "bun scripts/generate-preset-docs.ts && docusaurus build",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",
     "clear": "docusaurus clear",
@@ -26,6 +27,8 @@
     "@docusaurus/module-type-aliases": "3.7.0",
     "@docusaurus/tsconfig": "3.7.0",
     "@docusaurus/types": "3.7.0",
+    "@types/js-yaml": "^4.0.9",
+    "js-yaml": "^4.1.0",
     "typescript": "~5.6.2"
   },
   "overrides": {

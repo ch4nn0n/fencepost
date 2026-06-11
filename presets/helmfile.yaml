@@ -1,11 +1,10 @@
 # Fencepost preset: helmfile
-#
-# Import with:
-#   import:
-#     - helmfile
-#
-# Pairs well with the `helm` preset. Allows the read-only/diff workflow,
-# asks before sync/apply, and denies a full destroy.
+
+meta:
+  title: Helmfile
+  description: >-
+    Allows the read-only diff/template workflow, asks before sync and apply,
+    and guards a full destroy. Pairs well with the helm preset.
 
 tools:
   bash:

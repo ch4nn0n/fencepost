@@ -1,12 +1,11 @@
 # Fencepost preset: helm
-#
-# Import with:
-#   import:
-#     - helm
-#
-# Allows read-only/local operations (list, status, template, lint, diff),
-# asks before anything that changes cluster state, and denies forced upgrades
-# that can delete and recreate resources.
+
+meta:
+  title: Helm
+  description: >-
+    Allows read-only and local operations (list, status, template, lint,
+    diff), asks before anything that changes cluster state, and guards forced
+    upgrades that can delete and recreate resources.
 
 tools:
   bash:

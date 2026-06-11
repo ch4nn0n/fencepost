@@ -1,12 +1,11 @@
-# Fencepost preset: kubernetes (kubectl)
-#
-# Import with:
-#   import:
-#     - kubernetes
-#
-# Normalises away environment-specific flags (namespace, context, kubeconfig),
-# allows read-only inspection, asks before mutating cluster state, and denies
-# a few cascading/bulk deletes outright.
+# Fencepost preset: kubernetes
+
+meta:
+  title: Kubernetes (kubectl)
+  description: >-
+    Normalises away environment-specific flags (namespace, context,
+    kubeconfig), allows read-only inspection, asks before mutating cluster
+    state, and guards cascading or bulk deletes.
 
 tools:
   bash:

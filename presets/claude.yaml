@@ -1,20 +1,11 @@
 # Fencepost preset: claude
-#
-# Import with:
-#   import:
-#     - claude
-#
-# Sane defaults for working with Claude Code itself:
-#  - Allow Claude's built-in tools so routine work doesn't prompt.
-#  - Redirect /tmp paths to a per-session sandbox (/tmp/claude) so scratch
-#    files are isolated and can be cleaned up with destructive permissions
-#    scoped to that directory (see feature-15-claude-files.md).
-#
-# WebFetch and WebSearch are intentionally NOT allow-listed; they reach
-# external services, so they fall through to your `default` decision.
-#
-# Note: `Bash` is intentionally absent. Fencepost always routes Bash through
-# the bash command pipeline, so listing it here would have no effect.
+
+meta:
+  title: Claude Code
+  description: >-
+    Sane defaults for Claude Code itself: allows the built-in tools so routine
+    work doesn't prompt, and redirects /tmp paths to a per-session sandbox
+    (/tmp/claude) so scratch files stay isolated.
 
 # Rewrite /tmp -> /tmp/claude in tool inputs (Bash commands and file paths).
 redirect:
@@ -22,6 +13,11 @@ redirect:
   tmpTarget: /tmp/claude
 
 tools:
+  # WebFetch and WebSearch are intentionally NOT allow-listed; they reach
+  # external services, so they fall through to your `default` decision (see
+  # the claude-web preset). `Bash` is also intentionally absent: fencepost
+  # always routes Bash through the bash command pipeline, so listing it here
+  # would have no effect.
   allow:
     - Read
     - Glob

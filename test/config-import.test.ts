@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { load } from "js-yaml";
 import { resolveConfig } from "../src/config.js";
 
 const PRESETS_DIR = resolve(import.meta.dir, "..", "presets");
@@ -95,5 +96,27 @@ describe("import directive", () => {
     // Nothing imported; only the user's own (empty) config file is a source.
     expect(config._sources).toHaveLength(1);
     expect(config._sources[0]?.endsWith("fencepost.yaml")).toBe(true);
+  });
+});
+
+describe("preset metadata", () => {
+  // docs/scripts/generate-preset-docs.ts builds a docs page per preset from
+  // this block, so every bundled preset must carry one.
+  it("every bundled preset has meta.title and meta.description", async () => {
+    const files = (await readdir(PRESETS_DIR)).filter((f) => f.endsWith(".yaml")).sort();
+    expect(files.length).toBeGreaterThan(0);
+
+    const missing: string[] = [];
+    for (const file of files) {
+      const parsed = load(await readFile(join(PRESETS_DIR, file), "utf8")) as {
+        meta?: { title?: unknown; description?: unknown };
+      } | null;
+      const title = parsed?.meta?.title;
+      const description = parsed?.meta?.description;
+      if (typeof title !== "string" || title.trim() === "") missing.push(`${file}: meta.title`);
+      if (typeof description !== "string" || description.trim() === "")
+        missing.push(`${file}: meta.description`);
+    }
+    expect(missing).toEqual([]);
   });
 });

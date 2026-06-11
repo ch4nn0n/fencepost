@@ -1,17 +1,16 @@
 # Fencepost preset: python-safety
-#
-# Import with:
-#   import:
-#     - python-safety
-#
-# Inspects inline interpreter code (python -c "...", node -e "...", heredocs)
-# and flags destructive operations the shell can't see (feature 21). Pairs well
-# with the `claude` preset, which defines the /tmp/claude sandbox.
-#
-# Limits (see feature-21-nested-interpreters.md): inline code only (not
-# `python script.py`); aliased imports (`import shutil as sh`) and dynamic
-# dispatch are not resolved. This reduces accidental damage; it is not a sandbox.
 
+meta:
+  title: Python & JS safety
+  description: >-
+    Inspects inline interpreter code (python -c, node -e, heredocs) and flags
+    destructive operations the shell can't see: deletes and writes outside
+    the sandbox, subprocess spawns, and dynamic execution. Pairs well with
+    the claude preset, which defines the /tmp/claude sandbox.
+
+# Limits: inline code only (not `python script.py`); aliased imports
+# (`import shutil as sh`) and dynamic dispatch are not resolved. This reduces
+# accidental damage; it is not a sandbox.
 tools:
   bash:
     interpreters:

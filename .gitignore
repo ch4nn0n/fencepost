@@ -7,6 +7,10 @@ out
 bin
 *.tgz
 
+# generated preset docs pages (built from presets/*.yaml by
+# docs/scripts/generate-preset-docs.ts at docs build time)
+docs/docs/presets/
+
 # code coverage
 coverage
 *.lcov

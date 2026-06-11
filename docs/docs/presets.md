@@ -51,20 +51,13 @@ Imported preset paths show up in [provenance](./reference/cli-and-audit.md), lis
 
 ## Bundled presets
 
-| Name | Covers |
-|------|--------|
-| **`claude`** | Allows Claude's built-in tools (file tools included; web omitted); enables the `/tmp` → `/tmp/claude` [sandbox](./configuration/sandbox.md) and sandbox-scoped destructive ops. |
-| **`claude-web`** | Allows the network built-ins `WebFetch` and `WebSearch` that `claude` leaves out. |
-| **`git`** | Allows everyday porcelain; asks before history rewrites / branch deletes; denies force-push (steers to `--force-with-lease`) and `git clean -xfd`. |
-| **`kubernetes`** | Normalises namespace/context/kubeconfig flags; allows read-only `kubectl`; asks before mutations; denies namespace / `--all` / node deletes. |
-| **`helm`** | Allows list/status/template/lint/diff; asks before install/upgrade/uninstall; denies `helm upgrade --force`. |
-| **`helmfile`** | Allows diff/template/lint; asks before apply/sync; denies `helmfile destroy`. |
-| **`ansible`** | Normalises inventory/connection flags; allows read-only tooling; asks before playbook runs; denies ad-hoc shell/command/raw modules. |
-| **`gh`** | Allows read-only `gh` inspection (repos, PRs, issues, runs, releases); asks before writes (create/merge/edit, workflow runs, secrets, auth, codespaces, `gh api`); denies `gh repo delete` / `gh issue delete`. |
-| **`context7`** | Allows the read-only Context7 MCP doc-lookup tools (`mcp__*context7*`). |
-| **`playwright`** | Allows read-only Playwright MCP tools (snapshot, screenshot, navigate, read console/network); asks before page interaction (click, type, fill, upload, evaluate); denies `browser_run_code_unsafe`. |
-| **`filesystem`** | Allows read-only/inspection shell commands (`ls`, `cat`, `grep`, `find`, `jq`, …); guards `find -delete`/`-exec` and `sed -i`. |
-| **`python-safety`** | Conservative [inline-interpreter](./configuration/interpreters.md) defaults for Python and JS: ask on subprocess/eval/exec, deny destructive deletes/writes outside the sandbox. |
+Each preset has its own page, generated straight from the YAML in `presets/` — what you see is exactly what you import.
+
+```mdx-code-block
+import DocCardList from '@theme/DocCardList';
+
+<DocCardList />
+```
 
 ## The `claude` preset in detail {#claude}
 

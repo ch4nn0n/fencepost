@@ -20,17 +20,28 @@ Requires the `gh` CLI to be authenticated (`gh auth status`).
 
 ## 3. Create `presets/<name>.yaml`
 
-- Open with the standard header comment used by the other presets: the title, an `# Import with:` example, and a short note on what the preset allows / asks / denies.
+- Open with a one-line header comment (`# Fencepost preset: <name>`) followed by a `meta:` block — `bun test` fails without it:
+
+  ```yaml
+  # Fencepost preset: <name>
+
+  meta:
+    title: <Human-readable tool name>
+    description: >-
+      One to three sentences on what the preset allows silently, asks
+      before, and guards. This becomes the preset's docs page and its
+      card on the presets index.
+  ```
+
 - Convert the user's `tools.bash.*` (or `tools.*` for MCP) rules into the preset body.
 - **Do not set `default`** — presets never do; that belongs to the importing user's config.
 - Keep it focused on the single tool.
 
 ## 4. Update the docs
 
-Per `CONTRIBUTING.md`, document the new preset:
+The docs page for the preset is **generated automatically** from the YAML (meta block + full source) by `docs/scripts/generate-preset-docs.ts` at docs build time — there is no table to edit in `docs/docs/presets.md`.
 
-- Add a row to the "Bundled presets" table in `docs/docs/presets.md`.
-- Add the name to the `## Bundled presets` list in `README.md`.
+- Add the name to the `## Bundled presets` list in `README.md` (the README is still maintained by hand).
 
 ## 5. Validate before opening the PR
 

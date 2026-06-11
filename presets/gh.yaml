@@ -1,18 +1,13 @@
-# Fencepost preset: gh (GitHub CLI)
-#
-# Import with:
-#   import:
-#     - gh
-#
-# Allows read-only inspection of repos, PRs, issues, runs and releases; asks
-# before anything that writes to GitHub or changes local credentials/config;
-# and denies the irreversible deletions outright. This preset does not set
-# `default` — leave that to your own config.
-#
-# Subcommands verified against gh 2.83.2. `gh api` can perform arbitrary reads
-# *and* writes (including GraphQL via `gh api graphql`), so it is routed to
-# `ask` rather than allowed silently.
+# Fencepost preset: gh
 
+meta:
+  title: GitHub CLI
+  description: >-
+    Allows read-only inspection of repos, PRs, issues, runs and releases;
+    asks before anything that writes to GitHub or changes local credentials;
+    and guards the irreversible deletions.
+
+# Subcommands verified against gh 2.83.2.
 tools:
   bash:
     checks:
