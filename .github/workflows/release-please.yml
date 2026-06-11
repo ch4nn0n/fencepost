@@ -19,7 +19,7 @@ jobs:
       # Authenticate as a GitHub App rather than the default GITHUB_TOKEN, so the
       # release PR/commits trigger workflows (CI + PR-title) and the required
       # status checks actually run on it.
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
@@ -28,7 +28,7 @@ jobs:
       # Maintains a "release PR" from Conventional Commits. Merging it bumps the
       # version (package.json + .claude-plugin/plugin.json), updates CHANGELOG.md,
       # tags the commit, and creates a GitHub release.
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: rp
         with:
           token: ${{ steps.app-token.outputs.token }}
@@ -41,7 +41,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
