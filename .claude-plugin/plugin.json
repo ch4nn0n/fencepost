@@ -18,6 +18,17 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PLUGIN_DIR}}/hooks/post-tool-use.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
@@ -31,6 +42,8 @@
     ]
   },
   "skills": [
-    "skills/audit.md"
+    "skills/audit.md",
+    "skills/preset.md",
+    "skills/contribute-preset.md"
   ]
 }

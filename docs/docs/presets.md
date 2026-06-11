@@ -86,3 +86,10 @@ import:
   - kubernetes
 default: ask
 ```
+
+## Generating rules for a new tool
+
+Don't hand-write rules for a tool from memory — subcommands differ between versions. Two skills automate the method the bundled presets were built with:
+
+- **`/preset <tool>`** reads a tool's *actual* command surface (from the installed binary, or a connected MCP server's live tool list), classifies each command into allow / ask / deny, and merges the result into your own `.claude/fencepost.yaml`. It never sets `default`, and anything it's unsure about is left to fall through.
+- **`/contribute-preset <name>`** packages a rule set as a bundled `presets/*.yaml`, updates the docs, validates it, and opens a pull request — the path the presets above came in through.

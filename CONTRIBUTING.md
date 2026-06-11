@@ -36,13 +36,15 @@ CI runs all of these on every push and pull request.
 | `src/` | The evaluation engine (config loader, tool matcher, bash AST pipeline, audit). |
 | `presets/` | Bundled importable rule sets (`git`, `kubernetes`, …). |
 | `hooks/` | Thin shell wrappers the plugin manifest points at. |
-| `skills/` | The `/audit` slash command. |
+| `skills/` | The `/audit`, `/preset`, and `/contribute-preset` slash commands. |
 | `test/` | `bun:test` suites and fixtures. |
 | `docs/` | The Docusaurus documentation site. |
 
 ## Adding or changing a preset
 
 Presets are plain YAML in [`presets/`](./presets). Keep them focused on a single tool, and **do not set `default`** — that belongs to the user's own config. Document new presets in `docs/docs/presets.md`.
+
+The fastest path is the `/contribute-preset` skill: it reads a tool's real command surface, classifies it, writes the preset and docs, validates, and opens the PR for you. (Use `/preset` to generate rules for your own config without contributing them.) Either way, **verify subcommands against the installed binary rather than from memory** — they vary by version.
 
 ## Documentation
 
