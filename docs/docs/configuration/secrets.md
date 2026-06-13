@@ -61,13 +61,14 @@ The `secrets` block merges **field by field**: a preset can set `enabled: true` 
 
 ## Failure posture
 
-Secrets scanning always **fails open** — it is an extra layer, not a gate that can break your session:
+The posture depends on whether you **pinned** a scanner:
 
-- **No scanner installed** — scanning is skipped, and session-start guidance warns that protection is inactive, with install hints.
-- **Scanner errors or times out** — the tool call proceeds unscanned; a warning is logged.
-- **Output larger than `maxScanBytes`** — skipped entirely (partial scanning would give false confidence).
+- **`scanner: auto` (default) fails open.** A missing scanner deactivates scanning, a scanner error/timeout lets the tool call proceed unscanned, and output larger than `maxScanBytes` is skipped. Onboarding is never blocked; session-start guidance warns when protection is inactive, with install hints.
+- **`scanner: <name>` fails closed.** Pinning a scanner is a deliberate choice, so if that scanner can't run (not installed, spawn error, or timeout) fencepost treats it as a misconfiguration: **inputs are denied** and **tool output is withheld** (replaced with a notice) until the scanner is installed or `scanner` is set back to `auto`. Session-start guidance says so loudly.
 
-This is the same posture as the missing-runtime check in the hook scripts. A *broken config*, as always, [fails closed](../concepts/failure-posture.md).
+In both modes, output larger than `maxScanBytes` is skipped rather than withheld — that limit is a deliberate size policy, not scanner unavailability, so a single huge output never wedges the session.
+
+A *broken config*, as always, [fails closed](../concepts/failure-posture.md).
 
 ## What gets logged
 

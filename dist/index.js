@@ -5246,6 +5246,9 @@ __export(exports_scan, {
   scanToolInput: () => scanToolInput,
   redactionContext: () => redactionContext
 });
+function isPinned(secrets) {
+  return (secrets.scanner ?? "auto") !== "auto";
+}
 function ruleAllowed(finding, allowRules) {
   const key = `${finding.scanner}:${finding.ruleId}`;
   return allowRules.some((pattern) => matchesGlob(key, pattern));
@@ -5260,9 +5263,19 @@ async function runScan(scanner, content, secrets) {
   try {
     return await scanner.scan(content, secrets.timeoutMs ?? 3000);
   } catch (err2) {
-    logger.warn({ err: err2, scanner: scanner.name }, "secret scan unavailable, skipping");
+    logger.warn({ err: err2, scanner: scanner.name }, "secret scan could not run");
     return null;
   }
+}
+function scannerUnavailableDeny(secrets, toolName) {
+  const name2 = secrets.scanner;
+  return {
+    decision: "deny",
+    reason: `Fencepost is configured to scan for secrets with '${name2}', but it could not run, so this input could not be checked. Failing closed.`,
+    alternative: `Install '${name2}' (or set secrets.scanner to "auto" or another installed scanner), then retry.`,
+    matchedRule: `secrets.unavailable:${String(name2)}`,
+    matchedInput: toolName
+  };
 }
 async function scanToolInput(input, config, scannerOverride) {
   const secrets = config.secrets;
@@ -5285,12 +5298,14 @@ async function scanToolInput(input, config, scannerOverride) {
     return null;
   if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576))
     return null;
-  const scanner = scannerOverride ?? findScanner(secrets);
-  if (!scanner)
-    return null;
+  const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
+  if (!scanner) {
+    return isPinned(secrets) ? scannerUnavailableDeny(secrets, input.tool_name) : null;
+  }
   const findings = await runScan(scanner, content, secrets);
-  if (!findings)
-    return null;
+  if (!findings) {
+    return isPinned(secrets) ? scannerUnavailableDeny(secrets, input.tool_name) : null;
+  }
   const live = filterAllowedRules(findings, secrets);
   if (live.length === 0)
     return null;
@@ -5343,6 +5358,16 @@ function redactValue(value, walk, depth = 0) {
   }
   return value;
 }
+function withheldOutput(secrets) {
+  const name2 = String(secrets.scanner);
+  const notice = `[Fencepost withheld this output: the configured secret scanner '${name2}' could not run, so it could not be scanned for secrets. Failing closed.]`;
+  return {
+    updatedToolOutput: { type: "text", text: notice },
+    redactions: [],
+    withheld: true,
+    context: `Fencepost could not scan this tool output because the configured scanner '${name2}' is unavailable, ` + `so the output was withheld (fail closed). Tell the user to install '${name2}' or set secrets.scanner to "auto".`
+  };
+}
 async function scanToolOutput(toolName, toolResponse, config, scannerOverride) {
   const secrets = config.secrets;
   if (!secrets?.enabled || secrets.scanOutputs === false)
@@ -5359,12 +5384,14 @@ async function scanToolOutput(toolName, toolResponse, config, scannerOverride) {
     logger.warn({ toolName }, "tool output exceeds secrets.maxScanBytes, skipping scan");
     return null;
   }
-  const scanner = scannerOverride ?? findScanner(secrets);
-  if (!scanner)
-    return null;
+  const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
+  if (!scanner) {
+    return isPinned(secrets) ? withheldOutput(secrets) : null;
+  }
   const findings = await runScan(scanner, content, secrets);
-  if (!findings)
-    return null;
+  if (!findings) {
+    return isPinned(secrets) ? withheldOutput(secrets) : null;
+  }
   const live = filterAllowedRules(findings, secrets);
   if (live.length === 0)
     return null;
@@ -7342,6 +7369,12 @@ function secretsGuidance(config, scannerName) {
   if (!config.secrets?.enabled)
     return [];
   if (scannerName === null) {
+    const pinned = (config.secrets.scanner ?? "auto") !== "auto";
+    if (pinned) {
+      return [
+        `⚠ Fencepost secrets protection is configured to use '${config.secrets.scanner}', but it is not installed. Fencepost is FAILING CLOSED: gated tool inputs are denied and tool output is withheld until the scanner is installed. Tell the user to install '${config.secrets.scanner}', or set secrets.scanner to "auto".`
+      ];
+    }
     return [
       "⚠ Fencepost secrets protection is enabled but no supported scanner is installed, so secret scanning is INACTIVE. Tell the user to install one: 'brew install gitleaks' (recommended, fastest), 'brew install trufflehog', or 'pipx install detect-secrets'."
     ];
@@ -7489,6 +7522,7 @@ async function runPostToolUse() {
     const scan = await scanToolOutput2(input.tool_name, input.tool_response, config);
     if (!scan)
       process.exit(0);
+    const scanner = scan.withheld ? String(config.secrets.scanner) : scan.redactions[0]?.scanner ?? "unknown";
     const entry = buildAuditEntry({
       sessionId: input.session_id,
       toolUseId: input.tool_use_id,
@@ -7496,13 +7530,13 @@ async function runPostToolUse() {
       toolInput: input.tool_input,
       result: {
         decision: "allow",
-        reason: "secrets redacted from tool output",
-        matchedRule: `secrets.${scan.redactions[0]?.scanner ?? "unknown"}`
+        reason: scan.withheld ? "tool output withheld: secret scanner unavailable" : "secrets redacted from tool output",
+        matchedRule: scan.withheld ? `secrets.unavailable:${scanner}` : `secrets.${scanner}`
       }
     });
     entry.secrets = {
-      scanner: scan.redactions[0]?.scanner ?? "unknown",
-      rules: scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
+      scanner,
+      rules: scan.withheld ? ["unavailable"] : scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
       count: scan.redactions.reduce((n, r) => n + r.count, 0)
     };
     writeAuditEntry(entry, input.cwd);
@@ -7510,7 +7544,7 @@ async function runPostToolUse() {
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
         updatedToolOutput: scan.updatedToolOutput,
-        additionalContext: redactionContext2(scan.redactions)
+        additionalContext: scan.context ?? redactionContext2(scan.redactions)
       }
     };
     process.stdout.write(JSON.stringify(output) + `

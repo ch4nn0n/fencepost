@@ -12,9 +12,19 @@ import type { RedactionSummary } from "./redact.js";
  * - scanToolInput: PreToolUse — deny inputs that embed a secret.
  * - scanToolOutput: PostToolUse — redact secrets from output before the model
  *   sees it.
- * Both fail open on any scanner problem: a missing or broken scanner must
- * never break the session. SessionStart guidance surfaces the inactive state.
+ *
+ * Failure posture depends on whether a scanner is PINNED:
+ * - `scanner: auto` (default) fails OPEN — a missing or broken scanner skips
+ *   scanning so onboarding is never blocked. SessionStart guidance warns.
+ * - `scanner: <name>` is a deliberate choice, so an unavailable scanner is a
+ *   misconfiguration: it fails CLOSED — inputs are denied and output is
+ *   withheld until the scanner is installed (or `scanner` is set back to auto).
  */
+
+/** True when the user pinned a specific scanner (not "auto"). */
+function isPinned(secrets: SecretsConfig): boolean {
+  return (secrets.scanner ?? "auto") !== "auto";
+}
 
 // Tool-input fields that carry NEW content worth scanning. Edit.old_string is
 // deliberately absent: it is copied from the file, and scanning it would block
@@ -39,6 +49,8 @@ function filterAllowedRules(findings: SecretFinding[], secrets: SecretsConfig): 
   return findings.filter((f) => !ruleAllowed(f, allowRules));
 }
 
+// Returns the findings, or null when the scan could not run (spawn error,
+// timeout, unparseable output). Callers decide open/closed from isPinned().
 async function runScan(
   scanner: SecretScanner,
   content: string,
@@ -47,18 +59,32 @@ async function runScan(
   try {
     return await scanner.scan(content, secrets.timeoutMs ?? 3000);
   } catch (err) {
-    // Fail open: a broken scanner must not block the tool call.
-    logger.warn({ err, scanner: scanner.name }, "secret scan unavailable, skipping");
+    logger.warn({ err, scanner: scanner.name }, "secret scan could not run");
     return null;
   }
 }
 
+/** A fail-closed deny when the pinned scanner is unavailable (PreToolUse). */
+function scannerUnavailableDeny(secrets: SecretsConfig, toolName: string): EvalResult {
+  const name = secrets.scanner;
+  return {
+    decision: "deny",
+    reason: `Fencepost is configured to scan for secrets with '${name}', but it could not run, so this input could not be checked. Failing closed.`,
+    alternative: `Install '${name}' (or set secrets.scanner to "auto" or another installed scanner), then retry.`,
+    matchedRule: `secrets.unavailable:${String(name)}`,
+    matchedInput: toolName,
+  };
+}
+
 // ---- PreToolUse: deny secret-bearing inputs ----
 
+// scannerOverride: undefined = resolve from PATH; null = force "unavailable"
+// (used by tests, since every scanner is installed on dev machines); an
+// instance = use it directly.
 export async function scanToolInput(
   input: HookInput,
   config: FencepostConfig,
-  scannerOverride?: SecretScanner,
+  scannerOverride?: SecretScanner | null,
 ): Promise<EvalResult | null> {
   const secrets = config.secrets;
   if (!secrets?.enabled || secrets.scanInputs === false) return null;
@@ -84,11 +110,17 @@ export async function scanToolInput(
   if (!content) return null;
   if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576)) return null;
 
-  const scanner = scannerOverride ?? findScanner(secrets);
-  if (!scanner) return null;
+  const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
+  if (!scanner) {
+    // Pinned-but-missing scanner: fail closed. Auto: fail open.
+    return isPinned(secrets) ? scannerUnavailableDeny(secrets, input.tool_name) : null;
+  }
 
   const findings = await runScan(scanner, content, secrets);
-  if (!findings) return null;
+  if (!findings) {
+    // The scan errored. Pinned: fail closed. Auto: fail open.
+    return isPinned(secrets) ? scannerUnavailableDeny(secrets, input.tool_name) : null;
+  }
   const live = filterAllowedRules(findings, secrets);
   if (live.length === 0) return null;
 
@@ -110,6 +142,10 @@ export async function scanToolInput(
 export interface OutputScanResult {
   updatedToolOutput: unknown; // same shape as tool_response, strings redacted
   redactions: RedactionSummary[];
+  // Set when the pinned scanner was unavailable and the whole output was
+  // withheld (fail closed). `context` overrides the default redaction note.
+  withheld?: boolean;
+  context?: string;
 }
 
 const MAX_WALK_DEPTH = 8;
@@ -162,11 +198,31 @@ function redactValue(value: unknown, walk: RedactWalk, depth = 0): unknown {
   return value;
 }
 
+/**
+ * Fail-closed output: the pinned scanner could not run, so the output cannot be
+ * vouched safe. Replace the whole response with a text notice (the shape Claude
+ * Code documents for updatedToolOutput) so no unscanned content reaches the
+ * model — discarding the original content is the point.
+ */
+function withheldOutput(secrets: SecretsConfig): OutputScanResult {
+  const name = String(secrets.scanner);
+  const notice = `[Fencepost withheld this output: the configured secret scanner '${name}' could not run, so it could not be scanned for secrets. Failing closed.]`;
+  return {
+    updatedToolOutput: { type: "text", text: notice },
+    redactions: [],
+    withheld: true,
+    context:
+      `Fencepost could not scan this tool output because the configured scanner '${name}' is unavailable, ` +
+      `so the output was withheld (fail closed). Tell the user to install '${name}' or set secrets.scanner to "auto".`,
+  };
+}
+
+// scannerOverride: undefined = resolve from PATH; null = force "unavailable".
 export async function scanToolOutput(
   toolName: string,
   toolResponse: unknown,
   config: FencepostConfig,
-  scannerOverride?: SecretScanner,
+  scannerOverride?: SecretScanner | null,
 ): Promise<OutputScanResult | null> {
   const secrets = config.secrets;
   if (!secrets?.enabled || secrets.scanOutputs === false) return null;
@@ -177,15 +233,21 @@ export async function scanToolOutput(
   const content = pieces.join("\n");
   if (!content) return null;
   if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576)) {
+    // A deliberate size policy, not scanner unavailability — fail open either
+    // way so a single huge output never wedges the session.
     logger.warn({ toolName }, "tool output exceeds secrets.maxScanBytes, skipping scan");
     return null;
   }
 
-  const scanner = scannerOverride ?? findScanner(secrets);
-  if (!scanner) return null;
+  const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
+  if (!scanner) {
+    return isPinned(secrets) ? withheldOutput(secrets) : null;
+  }
 
   const findings = await runScan(scanner, content, secrets);
-  if (!findings) return null;
+  if (!findings) {
+    return isPinned(secrets) ? withheldOutput(secrets) : null;
+  }
   const live = filterAllowedRules(findings, secrets);
   if (live.length === 0) return null;
 

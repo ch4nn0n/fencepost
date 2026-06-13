@@ -170,7 +170,10 @@ async function runPostToolUse(): Promise<void> {
     const scan = await scanToolOutput(input.tool_name, input.tool_response, config);
     if (!scan) process.exit(0);
 
-    // Audit the redaction (rule ids and counts only — never values).
+    // Audit the redaction/withhold (rule ids and counts only — never values).
+    const scanner = scan.withheld
+      ? String(config.secrets.scanner)
+      : (scan.redactions[0]?.scanner ?? "unknown");
     const entry = buildAuditEntry({
       sessionId: input.session_id,
       toolUseId: input.tool_use_id,
@@ -178,13 +181,13 @@ async function runPostToolUse(): Promise<void> {
       toolInput: input.tool_input as Record<string, unknown>,
       result: {
         decision: "allow",
-        reason: "secrets redacted from tool output",
-        matchedRule: `secrets.${scan.redactions[0]?.scanner ?? "unknown"}`,
+        reason: scan.withheld ? "tool output withheld: secret scanner unavailable" : "secrets redacted from tool output",
+        matchedRule: scan.withheld ? `secrets.unavailable:${scanner}` : `secrets.${scanner}`,
       },
     });
     entry.secrets = {
-      scanner: scan.redactions[0]?.scanner ?? "unknown",
-      rules: scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
+      scanner,
+      rules: scan.withheld ? ["unavailable"] : scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
       count: scan.redactions.reduce((n, r) => n + r.count, 0),
     };
     void writeAuditEntry(entry, input.cwd);
@@ -193,7 +196,7 @@ async function runPostToolUse(): Promise<void> {
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
         updatedToolOutput: scan.updatedToolOutput,
-        additionalContext: redactionContext(scan.redactions),
+        additionalContext: scan.context ?? redactionContext(scan.redactions),
       },
     };
     process.stdout.write(JSON.stringify(output) + "\n");

@@ -48,4 +48,27 @@ describe("buildGuidance", () => {
     const on = buildGuidance(baseConfig({ redirect: { tmp: true, tmpTarget: "/tmp/claude" } }));
     expect(on).toContain("automatically redirected");
   });
+
+  describe("secrets guidance", () => {
+    it("reports active protection when a scanner is found", () => {
+      const text = buildGuidance(baseConfig({ secrets: { enabled: true, scanner: "auto" } }), "gitleaks");
+      expect(text).toContain("Secrets protection is active (scanner: gitleaks)");
+    });
+
+    it("warns INACTIVE when auto finds no scanner (fail open)", () => {
+      const text = buildGuidance(baseConfig({ secrets: { enabled: true, scanner: "auto" } }), null);
+      expect(text).toContain("INACTIVE");
+    });
+
+    it("warns FAILING CLOSED when a pinned scanner is missing", () => {
+      const text = buildGuidance(baseConfig({ secrets: { enabled: true, scanner: "gitleaks" } }), null);
+      expect(text).toContain("FAILING CLOSED");
+      expect(text).toContain("gitleaks");
+    });
+
+    it("emits no secrets line when the probe result is omitted", () => {
+      const text = buildGuidance(baseConfig({ secrets: { enabled: true, scanner: "auto" } }));
+      expect(text).not.toContain("Secrets protection");
+    });
+  });
 });

@@ -29,6 +29,14 @@ export function defaultGuidance(config: FencepostConfig): string[] {
 export function secretsGuidance(config: FencepostConfig, scannerName: string | null): string[] {
   if (!config.secrets?.enabled) return [];
   if (scannerName === null) {
+    const pinned = (config.secrets.scanner ?? "auto") !== "auto";
+    // A pinned-but-missing scanner is a misconfiguration: fencepost fails
+    // closed. "auto" with nothing installed just deactivates scanning.
+    if (pinned) {
+      return [
+        `⚠ Fencepost secrets protection is configured to use '${config.secrets.scanner}', but it is not installed. Fencepost is FAILING CLOSED: gated tool inputs are denied and tool output is withheld until the scanner is installed. Tell the user to install '${config.secrets.scanner}', or set secrets.scanner to "auto".`,
+      ];
+    }
     return [
       "⚠ Fencepost secrets protection is enabled but no supported scanner is installed, so secret scanning is INACTIVE. Tell the user to install one: 'brew install gitleaks' (recommended, fastest), 'brew install trufflehog', or 'pipx install detect-secrets'.",
     ];

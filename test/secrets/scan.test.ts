@@ -188,6 +188,60 @@ describe("scanToolOutput", () => {
   });
 });
 
+describe("fail-closed when a pinned scanner is unavailable", () => {
+  // null override forces "scanner unavailable" (every scanner is installed on
+  // dev machines, so we can't rely on findScanner returning null).
+  it("denies inputs when a pinned scanner is missing", async () => {
+    const input = makeInput("Write", { file_path: "/x", content: "anything" });
+    const r = await scanToolInput(input, makeConfig({ scanner: "gitleaks" }), null);
+    expect(r?.decision).toBe("deny");
+    expect(r?.matchedRule).toBe("secrets.unavailable:gitleaks");
+  });
+
+  it("denies inputs when a pinned scanner errors at runtime", async () => {
+    const input = makeInput("Write", { file_path: "/x", content: "anything" });
+    const r = await scanToolInput(input, makeConfig({ scanner: "trufflehog" }), brokenScanner());
+    expect(r?.decision).toBe("deny");
+    expect(r?.matchedRule).toBe("secrets.unavailable:trufflehog");
+  });
+
+  it("auto still fails open when no scanner is available", async () => {
+    const input = makeInput("Write", { file_path: "/x", content: FAKE_SECRET });
+    expect(await scanToolInput(input, makeConfig({ scanner: "auto" }), null)).toBeNull();
+  });
+
+  it("withholds output when a pinned scanner is missing", async () => {
+    const response = { type: "text", text: "totally clean output" };
+    const r = await scanToolOutput("Read", response, makeConfig({ scanner: "gitleaks" }), null);
+    expect(r?.withheld).toBe(true);
+    const updated = r?.updatedToolOutput as { type: string; text: string };
+    expect(updated.type).toBe("text");
+    expect(updated.text).toContain("withheld");
+    expect(updated.text).not.toContain("totally clean output");
+    expect(r?.context).toContain("fail closed");
+  });
+
+  it("withholds output when a pinned scanner errors at runtime", async () => {
+    const r = await scanToolOutput("Read", { type: "text", text: "x" }, makeConfig({ scanner: "detect-secrets" }), brokenScanner());
+    expect(r?.withheld).toBe(true);
+  });
+
+  it("auto still fails open on output when no scanner is available", async () => {
+    const r = await scanToolOutput("Read", { type: "text", text: FAKE_SECRET }, makeConfig({ scanner: "auto" }), null);
+    expect(r).toBeNull();
+  });
+
+  it("does not withhold oversized output even when pinned (size policy, not availability)", async () => {
+    const r = await scanToolOutput(
+      "Read",
+      { type: "text", text: "x".repeat(100) },
+      makeConfig({ scanner: "gitleaks", maxScanBytes: 10 }),
+      null,
+    );
+    expect(r).toBeNull();
+  });
+});
+
 describe("redactionContext", () => {
   it("summarises counts and rules without secret values", () => {
     const ctx = redactionContext([
