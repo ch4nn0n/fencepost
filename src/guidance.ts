@@ -22,10 +22,27 @@ export function defaultGuidance(config: FencepostConfig): string[] {
 }
 
 /**
+ * Secrets-scanning guidance (feature 24). `scannerName` is the probe result:
+ * a name when a scanner is installed, null when none is. Kept as a parameter
+ * so this module stays pure and testable.
+ */
+export function secretsGuidance(config: FencepostConfig, scannerName: string | null): string[] {
+  if (!config.secrets?.enabled) return [];
+  if (scannerName === null) {
+    return [
+      "⚠ Fencepost secrets protection is enabled but no supported scanner is installed, so secret scanning is INACTIVE. Tell the user to install one: 'brew install gitleaks' (recommended, fastest), 'brew install trufflehog', or 'pipx install detect-secrets'.",
+    ];
+  }
+  return [
+    `Secrets protection is active (scanner: ${scannerName}). Tool inputs containing credentials are denied, and secrets in tool output are replaced with [FENCEPOST:REDACTED ...] placeholders. Placeholders are not recoverable: never try to reconstruct, re-read, or guess a redacted value.`,
+  ];
+}
+
+/**
  * Build the SessionStart additionalContext string from config, or null if
  * guidance is disabled or empty.
  */
-export function buildGuidance(config: FencepostConfig): string | null {
+export function buildGuidance(config: FencepostConfig, secretsScanner?: string | null): string | null {
   const guidance = config.guidance;
   // Default to enabled when the section is absent.
   const enabled = guidance?.enabled ?? true;
@@ -34,6 +51,7 @@ export function buildGuidance(config: FencepostConfig): string | null {
   const includeDefaults = guidance?.includeDefaults ?? true;
   const lines: string[] = [];
   if (includeDefaults) lines.push(...defaultGuidance(config));
+  if (secretsScanner !== undefined) lines.push(...secretsGuidance(config, secretsScanner));
   if (guidance?.extra?.length) lines.push(...guidance.extra);
 
   if (lines.length === 0) return null;

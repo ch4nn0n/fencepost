@@ -2,6 +2,32 @@
 
 export type Decision = "allow" | "deny" | "ask";
 
+// ---- Secrets scanning (feature 24) ----
+
+export type SecretScannerName = "gitleaks" | "trufflehog" | "detect-secrets";
+
+export interface SecretsAllowConfig {
+  paths: string[]; // path globs whose file inputs are exempt (e.g. ".env.example")
+  rules: string[]; // "<scanner>:<ruleId>" globs to ignore (e.g. "gitleaks:generic-api-key")
+}
+
+// All fields optional so configs merge field-by-field (the discourageChaining
+// pattern): a preset can set just `enabled: true` and a user config can add
+// allowlist entries without either clobbering the other. The loader's
+// DEFAULT_CONFIG populates every field, so the resolved config is complete.
+export interface SecretsConfig {
+  enabled?: boolean;
+  // "auto" probes PATH in preference order; a name pins one scanner.
+  scanner?: "auto" | SecretScannerName;
+  scanInputs?: boolean; // PreToolUse: deny inputs that contain secrets
+  scanOutputs?: boolean; // PostToolUse: redact secrets from tool output
+  inputTools?: string[];
+  outputTools?: string[];
+  allow?: SecretsAllowConfig;
+  maxScanBytes?: number; // above this, skip scanning entirely
+  timeoutMs?: number; // per scanner invocation
+}
+
 // ---- Config types ----
 
 export interface ToolDenyRule {
@@ -140,6 +166,7 @@ export interface FencepostConfig {
   // but unit tests may construct a FencepostConfig without them.
   guidance?: GuidanceConfig;
   redirect?: RedirectConfig;
+  secrets?: SecretsConfig;
 }
 
 // Resolved config with provenance tracking
@@ -158,6 +185,8 @@ export interface HookInput {
   tool_name: string;
   tool_input: Record<string, unknown>;
   tool_use_id: string;
+  // Present on PostToolUse only. Shape varies by tool; treated opaquely.
+  tool_response?: unknown;
 }
 
 export interface HookSpecificOutput {
@@ -197,4 +226,6 @@ export interface AuditEntry {
   rule: string | null; // config path that matched
   tid: string; // tool_use_id
   normalised?: string; // only for Bash when normalisation changed the command
+  // Secrets scanning outcome (feature 24). Rule ids only — never secret values.
+  secrets?: { scanner: string; rules: string[]; count: number };
 }

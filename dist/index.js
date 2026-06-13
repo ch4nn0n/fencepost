@@ -4900,12 +4900,561 @@ var init_evaluate_ast = __esm(() => {
   init_logger();
 });
 
+// src/secrets/scanner.ts
+import { spawn } from "node:child_process";
+function runScanner(bin, args2, stdinText, timeoutMs, cwd) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(bin, args2, { stdio: ["pipe", "pipe", "pipe"], cwd });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled)
+        return;
+      settled = true;
+      child.kill("SIGKILL");
+      rejectPromise(new ScanUnavailableError(bin, `timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.stdout.on("data", (d) => stdout += d.toString("utf8"));
+    child.stderr.on("data", (d) => stderr += d.toString("utf8"));
+    child.on("error", (err2) => {
+      if (settled)
+        return;
+      settled = true;
+      clearTimeout(timer);
+      rejectPromise(new ScanUnavailableError(bin, `failed to spawn: ${err2.message}`));
+    });
+    child.on("close", (code) => {
+      if (settled)
+        return;
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise({ exitCode: code ?? -1, stdout, stderr });
+    });
+    if (stdinText !== null) {
+      child.stdin.on("error", () => {});
+      child.stdin.write(stdinText);
+    }
+    child.stdin.end();
+  });
+}
+var ScanUnavailableError;
+var init_scanner = __esm(() => {
+  ScanUnavailableError = class ScanUnavailableError extends Error {
+    constructor(scanner, detail) {
+      super(`${scanner}: ${detail}`);
+      this.name = "ScanUnavailableError";
+    }
+  };
+});
+
+// src/secrets/gitleaks.ts
+import { mkdtemp, readFile as readFile3, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join as join4 } from "node:path";
+function parseGitleaksOutput(stdout) {
+  const trimmed = stdout.trim();
+  if (!trimmed)
+    return [];
+  const raw = JSON.parse(trimmed);
+  if (!Array.isArray(raw))
+    throw new Error("expected a JSON array");
+  const findings = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null)
+      continue;
+    const finding = {
+      scanner: "gitleaks",
+      ruleId: String(item.RuleID ?? "unknown"),
+      line: typeof item.StartLine === "number" ? item.StartLine : 0
+    };
+    if (typeof item.Secret === "string" && item.Secret.length > 0)
+      finding.secret = item.Secret;
+    findings.push(finding);
+  }
+  return findings;
+}
+
+class GitleaksScanner {
+  name = "gitleaks";
+  async scan(content, timeoutMs) {
+    const dir = await mkdtemp(join4(tmpdir(), "fencepost-scan-"));
+    try {
+      const report = join4(dir, "report.json");
+      const result = await runScanner("gitleaks", ["stdin", "--no-banner", "--exit-code", "0", "-f", "json", "-r", report, "-l", "error"], content, timeoutMs);
+      if (result.exitCode !== 0) {
+        throw new ScanUnavailableError("gitleaks", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
+      }
+      let reportText;
+      try {
+        reportText = await readFile3(report, "utf8");
+      } catch {
+        return [];
+      }
+      try {
+        return parseGitleaksOutput(reportText);
+      } catch (err2) {
+        throw new ScanUnavailableError("gitleaks", `unparseable report: ${err2.message}`);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+var init_gitleaks = __esm(() => {
+  init_scanner();
+});
+
+// src/secrets/trufflehog.ts
+import { mkdtemp as mkdtemp2, rm as rm2, writeFile } from "node:fs/promises";
+import { tmpdir as tmpdir2 } from "node:os";
+import { join as join5 } from "node:path";
+function parseTrufflehogOutput(stdout) {
+  const findings = [];
+  for (const line of stdout.split(`
+`)) {
+    const trimmed = line.trim();
+    if (!trimmed)
+      continue;
+    let item;
+    try {
+      item = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (typeof item !== "object" || item === null || !item.DetectorName)
+      continue;
+    const secret = item.Raw || item.RawV2 || "";
+    const finding = {
+      scanner: "trufflehog",
+      ruleId: String(item.DetectorName),
+      line: item.SourceMetadata?.Data?.Filesystem?.line ?? 0
+    };
+    if (secret)
+      finding.secret = secret;
+    findings.push(finding);
+  }
+  return findings;
+}
+
+class TrufflehogScanner {
+  name = "trufflehog";
+  async scan(content, timeoutMs) {
+    const dir = await mkdtemp2(join5(tmpdir2(), "fencepost-scan-"));
+    try {
+      const file = join5(dir, "content");
+      await writeFile(file, content, { mode: 384 });
+      const baseArgs = ["filesystem", file, "--json", "--no-verification", "--log-level=-1"];
+      let result = await runScanner("trufflehog", [...baseArgs, "--no-update"], null, timeoutMs);
+      if (result.exitCode !== 0 && /cannot be repeated/.test(result.stderr)) {
+        result = await runScanner("trufflehog", baseArgs, null, timeoutMs);
+      }
+      if (result.exitCode !== 0) {
+        throw new ScanUnavailableError("trufflehog", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
+      }
+      return parseTrufflehogOutput(result.stdout);
+    } finally {
+      await rm2(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+var init_trufflehog = __esm(() => {
+  init_scanner();
+});
+
+// src/secrets/detect-secrets.ts
+import { mkdtemp as mkdtemp3, rm as rm3, writeFile as writeFile2 } from "node:fs/promises";
+import { tmpdir as tmpdir3 } from "node:os";
+import { join as join6 } from "node:path";
+function parseDetectSecretsOutput(stdout, filename) {
+  const trimmed = stdout.trim();
+  if (!trimmed)
+    return [];
+  const raw = JSON.parse(trimmed);
+  const results = raw.results?.[filename];
+  if (!Array.isArray(results))
+    return [];
+  const findings = [];
+  for (const item of results) {
+    if (typeof item !== "object" || item === null)
+      continue;
+    findings.push({
+      scanner: "detect-secrets",
+      ruleId: String(item.type ?? "unknown"),
+      line: typeof item.line_number === "number" ? item.line_number : 0
+    });
+  }
+  return findings;
+}
+
+class DetectSecretsScanner {
+  name = "detect-secrets";
+  async scan(content, timeoutMs) {
+    const dir = await mkdtemp3(join6(tmpdir3(), "fencepost-scan-"));
+    try {
+      const file = join6(dir, SCAN_FILENAME);
+      await writeFile2(file, content, { mode: 384 });
+      const result = await runScanner("detect-secrets", ["scan", SCAN_FILENAME], null, timeoutMs, dir);
+      if (result.exitCode !== 0) {
+        throw new ScanUnavailableError("detect-secrets", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
+      }
+      try {
+        return parseDetectSecretsOutput(result.stdout, SCAN_FILENAME);
+      } catch (err2) {
+        throw new ScanUnavailableError("detect-secrets", `unparseable output: ${err2.message}`);
+      }
+    } finally {
+      await rm3(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+var SCAN_FILENAME = "content";
+var init_detect_secrets = __esm(() => {
+  init_scanner();
+});
+
+// src/secrets/detect.ts
+import { accessSync, constants } from "node:fs";
+import { join as join7, delimiter } from "node:path";
+function binaryOnPath(bin) {
+  const path = process.env["PATH"] ?? "";
+  for (const dir of path.split(delimiter)) {
+    if (!dir)
+      continue;
+    try {
+      accessSync(join7(dir, bin), constants.X_OK);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+function makeScanner(name2) {
+  switch (name2) {
+    case "gitleaks":
+      return new GitleaksScanner;
+    case "trufflehog":
+      return new TrufflehogScanner;
+    case "detect-secrets":
+      return new DetectSecretsScanner;
+  }
+}
+function findScanner(secrets) {
+  const pref = secrets?.scanner ?? "auto";
+  const candidates2 = pref === "auto" ? PREFERENCE : [pref];
+  for (const name2 of candidates2) {
+    if (binaryOnPath(name2))
+      return makeScanner(name2);
+  }
+  return null;
+}
+var PREFERENCE;
+var init_detect = __esm(() => {
+  init_gitleaks();
+  init_trufflehog();
+  init_detect_secrets();
+  PREFERENCE = ["gitleaks", "trufflehog", "detect-secrets"];
+});
+
+// src/secrets/redact.ts
+function placeholderFor(finding) {
+  return `[FENCEPOST:REDACTED ${finding.scanner}:${finding.ruleId}]`;
+}
+function collectSpans(text, findings) {
+  const spans = [];
+  for (const f of findings) {
+    if (!f.secret)
+      continue;
+    let from = 0;
+    for (;; ) {
+      const idx = text.indexOf(f.secret, from);
+      if (idx === -1)
+        break;
+      spans.push({ start: idx, end: idx + f.secret.length, label: `${f.scanner}:${f.ruleId}` });
+      from = idx + f.secret.length;
+    }
+  }
+  return spans;
+}
+function mergeSpans(spans) {
+  const sorted = [...spans].sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged = [];
+  for (const span of sorted) {
+    const prev = merged[merged.length - 1];
+    if (prev && span.start < prev.end) {
+      prev.end = Math.max(prev.end, span.end);
+      if (!prev.label.split(",").includes(span.label))
+        prev.label += `,${span.label}`;
+    } else {
+      merged.push({ ...span });
+    }
+  }
+  return merged;
+}
+function redactLine(text, lineNo, placeholder) {
+  const lines = text.split(`
+`);
+  if (lineNo < 1 || lineNo > lines.length)
+    return null;
+  const original = lines[lineNo - 1];
+  const prefix = original.match(LINE_PREFIX_RE)?.[0] ?? "";
+  lines[lineNo - 1] = `${prefix}${placeholder} (full line)`;
+  return lines.join(`
+`);
+}
+function redactFindings(text, findings) {
+  const summaries = new Map;
+  const bump = (scanner, ruleId, by) => {
+    const key = `${scanner}:${ruleId}`;
+    const existing = summaries.get(key);
+    if (existing)
+      existing.count += by;
+    else
+      summaries.set(key, { scanner, ruleId, count: by });
+  };
+  const spans = mergeSpans(collectSpans(text, findings));
+  let out2 = "";
+  let cursor = 0;
+  for (const span of spans) {
+    out2 += text.slice(cursor, span.start) + `[FENCEPOST:REDACTED ${span.label}]`;
+    cursor = span.end;
+    for (const label of span.label.split(",")) {
+      const sep = label.indexOf(":");
+      bump(label.slice(0, sep), label.slice(sep + 1), 1);
+    }
+  }
+  out2 += text.slice(cursor);
+  for (const f of findings) {
+    if (f.secret)
+      continue;
+    const redacted = redactLine(out2, f.line, placeholderFor(f));
+    if (redacted !== null) {
+      out2 = redacted;
+      bump(f.scanner, f.ruleId, 1);
+    }
+  }
+  return { text: out2, redactions: [...summaries.values()] };
+}
+var LINE_PREFIX_RE;
+var init_redact = __esm(() => {
+  LINE_PREFIX_RE = /^(\s*\d+→|[^\s:][^:\n]*:\d+:)/;
+});
+
+// src/secrets/scan.ts
+var exports_scan = {};
+__export(exports_scan, {
+  scanToolOutput: () => scanToolOutput,
+  scanToolInput: () => scanToolInput,
+  redactionContext: () => redactionContext
+});
+function ruleAllowed(finding, allowRules) {
+  const key = `${finding.scanner}:${finding.ruleId}`;
+  return allowRules.some((pattern) => matchesGlob(key, pattern));
+}
+function filterAllowedRules(findings, secrets) {
+  const allowRules = secrets.allow?.rules ?? [];
+  if (allowRules.length === 0)
+    return findings;
+  return findings.filter((f) => !ruleAllowed(f, allowRules));
+}
+async function runScan(scanner, content, secrets) {
+  try {
+    return await scanner.scan(content, secrets.timeoutMs ?? 3000);
+  } catch (err2) {
+    logger.warn({ err: err2, scanner: scanner.name }, "secret scan unavailable, skipping");
+    return null;
+  }
+}
+async function scanToolInput(input, config, scannerOverride) {
+  const secrets = config.secrets;
+  if (!secrets?.enabled || secrets.scanInputs === false)
+    return null;
+  const fields = INPUT_FIELDS_BY_TOOL[input.tool_name];
+  if (!fields || !(secrets.inputTools ?? Object.keys(INPUT_FIELDS_BY_TOOL)).includes(input.tool_name)) {
+    return null;
+  }
+  const allowPaths = secrets.allow?.paths ?? [];
+  for (const pathField of PATH_FIELDS) {
+    const target = input.tool_input[pathField];
+    if (typeof target === "string" && allowPaths.some((g) => matchesPathGlob(target, g, input.cwd))) {
+      return null;
+    }
+  }
+  const content = fields.map((f) => input.tool_input[f]).filter((v) => typeof v === "string").join(`
+`);
+  if (!content)
+    return null;
+  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576))
+    return null;
+  const scanner = scannerOverride ?? findScanner(secrets);
+  if (!scanner)
+    return null;
+  const findings = await runScan(scanner, content, secrets);
+  if (!findings)
+    return null;
+  const live = filterAllowedRules(findings, secrets);
+  if (live.length === 0)
+    return null;
+  const rules = [...new Set(live.map((f) => `${f.scanner}:${f.ruleId}`))];
+  return {
+    decision: "deny",
+    reason: `The ${input.tool_name} input contains what looks like a secret (${rules.join(", ")}). Secrets must not be written into files or commands.`,
+    alternative: "Reference the secret from its existing source (an environment variable, a secrets manager, or the file it already lives in) instead of embedding the value.",
+    matchedRule: `secrets.${rules[0]}`,
+    matchedInput: input.tool_name
+  };
+}
+function collectStrings(value, out2, depth = 0) {
+  if (depth > MAX_WALK_DEPTH)
+    return;
+  if (typeof value === "string") {
+    out2.push(value);
+  } else if (Array.isArray(value)) {
+    for (const v of value)
+      collectStrings(v, out2, depth + 1);
+  } else if (typeof value === "object" && value !== null) {
+    for (const v of Object.values(value))
+      collectStrings(v, out2, depth + 1);
+  }
+}
+function redactValue(value, walk, depth = 0) {
+  if (depth > MAX_WALK_DEPTH)
+    return value;
+  if (typeof value === "string") {
+    const lineStart = walk.leafLineStarts[walk.leafIndex++] ?? 1;
+    const localFindings = walk.findings.map((f) => f.secret ? f : { ...f, line: f.line - lineStart + 1 }).filter((f) => f.secret || f.line >= 1);
+    const result = redactFindings(value, localFindings);
+    for (const r of result.redactions) {
+      const key = `${r.scanner}:${r.ruleId}`;
+      const existing = walk.summaries.get(key);
+      if (existing)
+        existing.count += r.count;
+      else
+        walk.summaries.set(key, { ...r });
+    }
+    return result.text;
+  }
+  if (Array.isArray(value))
+    return value.map((v) => redactValue(v, walk, depth + 1));
+  if (typeof value === "object" && value !== null) {
+    const out2 = {};
+    for (const [k, v] of Object.entries(value))
+      out2[k] = redactValue(v, walk, depth + 1);
+    return out2;
+  }
+  return value;
+}
+async function scanToolOutput(toolName, toolResponse, config, scannerOverride) {
+  const secrets = config.secrets;
+  if (!secrets?.enabled || secrets.scanOutputs === false)
+    return null;
+  if (!(secrets.outputTools ?? []).includes(toolName))
+    return null;
+  const pieces = [];
+  collectStrings(toolResponse, pieces);
+  const content = pieces.join(`
+`);
+  if (!content)
+    return null;
+  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576)) {
+    logger.warn({ toolName }, "tool output exceeds secrets.maxScanBytes, skipping scan");
+    return null;
+  }
+  const scanner = scannerOverride ?? findScanner(secrets);
+  if (!scanner)
+    return null;
+  const findings = await runScan(scanner, content, secrets);
+  if (!findings)
+    return null;
+  const live = filterAllowedRules(findings, secrets);
+  if (live.length === 0)
+    return null;
+  const leafLineStarts = [];
+  let line = 1;
+  for (const piece of pieces) {
+    leafLineStarts.push(line);
+    line += piece.split(`
+`).length;
+  }
+  const summaries = new Map;
+  const walk = { findings: live, summaries, leafLineStarts, leafIndex: 0 };
+  const updatedToolOutput = redactValue(toolResponse, walk);
+  if (summaries.size === 0)
+    return null;
+  return { updatedToolOutput, redactions: [...summaries.values()] };
+}
+function redactionContext(redactions) {
+  const total = redactions.reduce((n, r) => n + r.count, 0);
+  const rules = redactions.map((r) => `${r.scanner}:${r.ruleId}`).join(", ");
+  return `Fencepost redacted ${total} secret value(s) from this tool output (${rules}). ` + "The [FENCEPOST:REDACTED ...] placeholders are not recoverable; do not attempt to reconstruct, " + "re-read, or guess the original values. If the secret is needed, ask the user.";
+}
+var INPUT_FIELDS_BY_TOOL, PATH_FIELDS, MAX_WALK_DEPTH = 8;
+var init_scan = __esm(() => {
+  init_logger();
+  init_path_match();
+  init_detect();
+  init_redact();
+  INPUT_FIELDS_BY_TOOL = {
+    Write: ["content"],
+    Edit: ["new_string"],
+    NotebookEdit: ["new_source"],
+    Bash: ["command"]
+  };
+  PATH_FIELDS = ["file_path", "notebook_path"];
+});
+
+// src/secrets/detect.ts
+var exports_detect = {};
+__export(exports_detect, {
+  findScanner: () => findScanner2,
+  binaryOnPath: () => binaryOnPath2
+});
+import { accessSync as accessSync2, constants as constants2 } from "node:fs";
+import { join as join8, delimiter as delimiter2 } from "node:path";
+function binaryOnPath2(bin) {
+  const path = process.env["PATH"] ?? "";
+  for (const dir of path.split(delimiter2)) {
+    if (!dir)
+      continue;
+    try {
+      accessSync2(join8(dir, bin), constants2.X_OK);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+function makeScanner2(name2) {
+  switch (name2) {
+    case "gitleaks":
+      return new GitleaksScanner;
+    case "trufflehog":
+      return new TrufflehogScanner;
+    case "detect-secrets":
+      return new DetectSecretsScanner;
+  }
+}
+function findScanner2(secrets) {
+  const pref = secrets?.scanner ?? "auto";
+  const candidates2 = pref === "auto" ? PREFERENCE2 : [pref];
+  for (const name2 of candidates2) {
+    if (binaryOnPath2(name2))
+      return makeScanner2(name2);
+  }
+  return null;
+}
+var PREFERENCE2;
+var init_detect2 = __esm(() => {
+  init_gitleaks();
+  init_trufflehog();
+  init_detect_secrets();
+  PREFERENCE2 = ["gitleaks", "trufflehog", "detect-secrets"];
+});
+
 // src/config.ts
-import { join as join4, resolve as resolve3, dirname as dirname4 } from "node:path";
+import { join as join9, resolve as resolve3, dirname as dirname4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { homedir as homedir3 } from "node:os";
 import { existsSync as existsSync3 } from "node:fs";
-import { readFile as readFile3 } from "node:fs/promises";
+import { readFile as readFile4 } from "node:fs/promises";
 function note2(level, file, message) {
   if (issueSink2)
     issueSink2.push({ level, file, message });
@@ -5077,6 +5626,38 @@ function parseInterpreters2(raw, source) {
   }
   return out2;
 }
+function parseSecrets2(raw, source) {
+  if (typeof raw !== "object" || raw === null)
+    return;
+  const o = raw;
+  const out2 = {};
+  if (typeof o["enabled"] === "boolean")
+    out2.enabled = o["enabled"];
+  if (o["scanner"] !== undefined) {
+    if (SECRET_SCANNER_NAMES2.includes(String(o["scanner"]))) {
+      out2.scanner = o["scanner"];
+    } else {
+      note2("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|trufflehog|detect-secrets), ignoring`);
+    }
+  }
+  if (typeof o["scanInputs"] === "boolean")
+    out2.scanInputs = o["scanInputs"];
+  if (typeof o["scanOutputs"] === "boolean")
+    out2.scanOutputs = o["scanOutputs"];
+  if (o["inputTools"] !== undefined)
+    out2.inputTools = asStringArray2(o["inputTools"]);
+  if (o["outputTools"] !== undefined)
+    out2.outputTools = asStringArray2(o["outputTools"]);
+  if (typeof o["allow"] === "object" && o["allow"] !== null) {
+    const a = o["allow"];
+    out2.allow = { paths: asStringArray2(a["paths"]), rules: asStringArray2(a["rules"]) };
+  }
+  if (typeof o["maxScanBytes"] === "number" && o["maxScanBytes"] > 0)
+    out2.maxScanBytes = o["maxScanBytes"];
+  if (typeof o["timeoutMs"] === "number" && o["timeoutMs"] > 0)
+    out2.timeoutMs = o["timeoutMs"];
+  return Object.keys(out2).length > 0 ? out2 : undefined;
+}
 function validateConfig2(raw, source) {
   if (typeof raw !== "object" || raw === null) {
     note2("error", source, "config is not a YAML mapping");
@@ -5194,6 +5775,9 @@ function validateConfig2(raw, source) {
     result.guidance = guidance;
   if (redirect)
     result.redirect = redirect;
+  const secrets = parseSecrets2(obj["secrets"], source);
+  if (secrets)
+    result.secrets = secrets;
   return result;
 }
 function mergeInterpreters2(base, override) {
@@ -5210,6 +5794,26 @@ function mergeInterpreters2(base, override) {
     } : { ...cfg };
   }
   return out2;
+}
+function mergeSecrets2(base, override) {
+  if (!base)
+    return override;
+  if (!override)
+    return base;
+  return {
+    enabled: override.enabled ?? base.enabled,
+    scanner: override.scanner ?? base.scanner,
+    scanInputs: override.scanInputs ?? base.scanInputs,
+    scanOutputs: override.scanOutputs ?? base.scanOutputs,
+    inputTools: override.inputTools ?? base.inputTools,
+    outputTools: override.outputTools ?? base.outputTools,
+    allow: {
+      paths: [...base.allow?.paths ?? [], ...override.allow?.paths ?? []],
+      rules: [...base.allow?.rules ?? [], ...override.allow?.rules ?? []]
+    },
+    maxScanBytes: override.maxScanBytes ?? base.maxScanBytes,
+    timeoutMs: override.timeoutMs ?? base.timeoutMs
+  };
 }
 function mergeConfigs2(base, override) {
   return {
@@ -5234,7 +5838,8 @@ function mergeConfigs2(base, override) {
       }
     },
     guidance: override.guidance ?? base.guidance,
-    redirect: override.redirect ?? base.redirect
+    redirect: override.redirect ?? base.redirect,
+    secrets: mergeSecrets2(base.secrets, override.secrets)
   };
 }
 function extractImports2(raw) {
@@ -5251,9 +5856,9 @@ function presetSearchDirs2() {
   if (envDir)
     dirs.push(envDir);
   try {
-    dirs.push(join4(dirname4(process.execPath), "..", "presets"));
+    dirs.push(join9(dirname4(process.execPath), "..", "presets"));
   } catch {}
-  dirs.push(join4(moduleDir2, "..", "presets"));
+  dirs.push(join9(moduleDir2, "..", "presets"));
   return dirs;
 }
 async function resolvePreset2(name2, importedFrom) {
@@ -5263,7 +5868,7 @@ async function resolvePreset2(name2, importedFrom) {
   }
   for (const dir of presetSearchDirs2()) {
     for (const ext of [".yaml", ".yml"]) {
-      const candidate = join4(dir, name2 + ext);
+      const candidate = join9(dir, name2 + ext);
       if (existsSync3(candidate))
         return candidate;
     }
@@ -5289,7 +5894,7 @@ async function loadImports2(names, importedFrom) {
 async function loadYamlFile2(filePath) {
   let text;
   try {
-    text = await readFile3(filePath, "utf8");
+    text = await readFile4(filePath, "utf8");
   } catch (err2) {
     note2("error", filePath, `could not read file: ${err2.message}`);
     return null;
@@ -5314,7 +5919,7 @@ async function loadConfDir2(dirPath) {
   } catch {
     return null;
   }
-  const yamlFiles = entries.filter((f) => f.endsWith(".yaml") || f.endsWith(".yml")).sort().map((f) => join4(dirPath, f));
+  const yamlFiles = entries.filter((f) => f.endsWith(".yaml") || f.endsWith(".yml")).sort().map((f) => join9(dirPath, f));
   if (yamlFiles.length === 0)
     return null;
   let merged = DEFAULT_CONFIG2;
@@ -5394,10 +5999,10 @@ async function compileConfig2(cwd) {
 }
 async function resolveInternal2(cwd) {
   const home = homedir3();
-  const claudeDir = join4(resolve3(cwd), ".claude");
+  const claudeDir = join9(resolve3(cwd), ".claude");
   const candidates2 = [
-    { confDir: join4(claudeDir, "fencepost", "config"), singleFile: join4(claudeDir, "fencepost.yaml") },
-    { confDir: join4(home, ".claude", "fencepost", "config"), singleFile: join4(home, ".claude", "fencepost.yaml") }
+    { confDir: join9(claudeDir, "fencepost", "config"), singleFile: join9(claudeDir, "fencepost.yaml") },
+    { confDir: join9(home, ".claude", "fencepost", "config"), singleFile: join9(home, ".claude", "fencepost.yaml") }
   ];
   let host = null;
   for (const { confDir, singleFile } of candidates2) {
@@ -5430,7 +6035,7 @@ async function resolveInternal2(cwd) {
 async function resolveConfig(cwd) {
   return (await compileConfig2(cwd)).config;
 }
-var moduleDir2, DEFAULT_DISCOURAGE_CHAINING2 = true, DEFAULT_BASH_CONFIG2, DEFAULT_TOOLS_CONFIG2, DEFAULT_GUIDANCE_CONFIG2, DEFAULT_REDIRECT_CONFIG2, DEFAULT_ON_ERROR2 = "ask", DEFAULT_CONFIG2, issueSink2 = null, PRESET_NAME_RE2;
+var moduleDir2, DEFAULT_DISCOURAGE_CHAINING2 = true, DEFAULT_BASH_CONFIG2, DEFAULT_TOOLS_CONFIG2, DEFAULT_GUIDANCE_CONFIG2, DEFAULT_REDIRECT_CONFIG2, DEFAULT_ON_ERROR2 = "ask", DEFAULT_SECRETS_CONFIG2, DEFAULT_CONFIG2, issueSink2 = null, SECRET_SCANNER_NAMES2, PRESET_NAME_RE2;
 var init_config = __esm(() => {
   init_js_yaml();
   init_logger();
@@ -5463,13 +6068,26 @@ var init_config = __esm(() => {
     tmp: false,
     tmpTarget: "/tmp/claude"
   };
+  DEFAULT_SECRETS_CONFIG2 = {
+    enabled: false,
+    scanner: "auto",
+    scanInputs: true,
+    scanOutputs: true,
+    inputTools: ["Write", "Edit", "NotebookEdit", "Bash"],
+    outputTools: ["Read", "Bash", "Grep", "WebFetch"],
+    allow: { paths: [], rules: [] },
+    maxScanBytes: 1048576,
+    timeoutMs: 3000
+  };
   DEFAULT_CONFIG2 = {
     default: "ask",
     onError: DEFAULT_ON_ERROR2,
     tools: DEFAULT_TOOLS_CONFIG2,
     guidance: DEFAULT_GUIDANCE_CONFIG2,
-    redirect: DEFAULT_REDIRECT_CONFIG2
+    redirect: DEFAULT_REDIRECT_CONFIG2,
+    secrets: DEFAULT_SECRETS_CONFIG2
   };
+  SECRET_SCANNER_NAMES2 = ["auto", "gitleaks", "trufflehog", "detect-secrets"];
   PRESET_NAME_RE2 = /^[a-zA-Z0-9_-]+$/;
 });
 
@@ -5577,7 +6195,7 @@ var exports_skill = {};
 __export(exports_skill, {
   runAuditSkill: () => runAuditSkill
 });
-import { join as join5 } from "node:path";
+import { join as join10 } from "node:path";
 async function runAuditSkill(cwd) {
   const config = await resolveConfig(cwd);
   const { _sources } = config;
@@ -5599,7 +6217,7 @@ ${_sources.map((s) => `  - ${s}`).join(`
 `);
     printConfigSummary(config);
   }
-  const logPath = join5(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
+  const logPath = join10(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
   const entries = await loadAuditLog(logPath);
   if (entries.length === 0) {
     process.stdout.write(`## Audit Log
@@ -5707,11 +6325,11 @@ tools:
 }
 async function loadAuditLog(logPath) {
   try {
-    const { readFile: readFile4 } = await import("node:fs/promises");
+    const { readFile: readFile5 } = await import("node:fs/promises");
     const { existsSync: existsSync4 } = await import("node:fs");
     if (!existsSync4(logPath))
       return [];
-    const text = await readFile4(logPath, "utf8");
+    const text = await readFile5(logPath, "utf8");
     return text.trim().split(`
 `).filter(Boolean).map((line) => {
       try {
@@ -5811,12 +6429,24 @@ var DEFAULT_REDIRECT_CONFIG = {
   tmpTarget: "/tmp/claude"
 };
 var DEFAULT_ON_ERROR = "ask";
+var DEFAULT_SECRETS_CONFIG = {
+  enabled: false,
+  scanner: "auto",
+  scanInputs: true,
+  scanOutputs: true,
+  inputTools: ["Write", "Edit", "NotebookEdit", "Bash"],
+  outputTools: ["Read", "Bash", "Grep", "WebFetch"],
+  allow: { paths: [], rules: [] },
+  maxScanBytes: 1048576,
+  timeoutMs: 3000
+};
 var DEFAULT_CONFIG = {
   default: "ask",
   onError: DEFAULT_ON_ERROR,
   tools: DEFAULT_TOOLS_CONFIG,
   guidance: DEFAULT_GUIDANCE_CONFIG,
-  redirect: DEFAULT_REDIRECT_CONFIG
+  redirect: DEFAULT_REDIRECT_CONFIG,
+  secrets: DEFAULT_SECRETS_CONFIG
 };
 var issueSink = null;
 function note(level, file, message) {
@@ -5990,6 +6620,39 @@ function parseInterpreters(raw, source) {
   }
   return out2;
 }
+var SECRET_SCANNER_NAMES = ["auto", "gitleaks", "trufflehog", "detect-secrets"];
+function parseSecrets(raw, source) {
+  if (typeof raw !== "object" || raw === null)
+    return;
+  const o = raw;
+  const out2 = {};
+  if (typeof o["enabled"] === "boolean")
+    out2.enabled = o["enabled"];
+  if (o["scanner"] !== undefined) {
+    if (SECRET_SCANNER_NAMES.includes(String(o["scanner"]))) {
+      out2.scanner = o["scanner"];
+    } else {
+      note("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|trufflehog|detect-secrets), ignoring`);
+    }
+  }
+  if (typeof o["scanInputs"] === "boolean")
+    out2.scanInputs = o["scanInputs"];
+  if (typeof o["scanOutputs"] === "boolean")
+    out2.scanOutputs = o["scanOutputs"];
+  if (o["inputTools"] !== undefined)
+    out2.inputTools = asStringArray(o["inputTools"]);
+  if (o["outputTools"] !== undefined)
+    out2.outputTools = asStringArray(o["outputTools"]);
+  if (typeof o["allow"] === "object" && o["allow"] !== null) {
+    const a = o["allow"];
+    out2.allow = { paths: asStringArray(a["paths"]), rules: asStringArray(a["rules"]) };
+  }
+  if (typeof o["maxScanBytes"] === "number" && o["maxScanBytes"] > 0)
+    out2.maxScanBytes = o["maxScanBytes"];
+  if (typeof o["timeoutMs"] === "number" && o["timeoutMs"] > 0)
+    out2.timeoutMs = o["timeoutMs"];
+  return Object.keys(out2).length > 0 ? out2 : undefined;
+}
 function validateConfig(raw, source) {
   if (typeof raw !== "object" || raw === null) {
     note("error", source, "config is not a YAML mapping");
@@ -6107,6 +6770,9 @@ function validateConfig(raw, source) {
     result.guidance = guidance;
   if (redirect)
     result.redirect = redirect;
+  const secrets = parseSecrets(obj["secrets"], source);
+  if (secrets)
+    result.secrets = secrets;
   return result;
 }
 function mergeInterpreters(base, override) {
@@ -6123,6 +6789,26 @@ function mergeInterpreters(base, override) {
     } : { ...cfg };
   }
   return out2;
+}
+function mergeSecrets(base, override) {
+  if (!base)
+    return override;
+  if (!override)
+    return base;
+  return {
+    enabled: override.enabled ?? base.enabled,
+    scanner: override.scanner ?? base.scanner,
+    scanInputs: override.scanInputs ?? base.scanInputs,
+    scanOutputs: override.scanOutputs ?? base.scanOutputs,
+    inputTools: override.inputTools ?? base.inputTools,
+    outputTools: override.outputTools ?? base.outputTools,
+    allow: {
+      paths: [...base.allow?.paths ?? [], ...override.allow?.paths ?? []],
+      rules: [...base.allow?.rules ?? [], ...override.allow?.rules ?? []]
+    },
+    maxScanBytes: override.maxScanBytes ?? base.maxScanBytes,
+    timeoutMs: override.timeoutMs ?? base.timeoutMs
+  };
 }
 function mergeConfigs(base, override) {
   return {
@@ -6147,7 +6833,8 @@ function mergeConfigs(base, override) {
       }
     },
     guidance: override.guidance ?? base.guidance,
-    redirect: override.redirect ?? base.redirect
+    redirect: override.redirect ?? base.redirect,
+    secrets: mergeSecrets(base.secrets, override.secrets)
   };
 }
 var PRESET_NAME_RE = /^[a-zA-Z0-9_-]+$/;
@@ -6501,8 +7188,16 @@ function buildAuditEntry({
   result,
   normalisedCommand
 }) {
+  const secretsMatch = result.matchedRule?.startsWith("secrets.") === true;
   let inputSummary;
-  if (toolName === "Bash") {
+  if (secretsMatch) {
+    const safe = {};
+    for (const key of ["file_path", "notebook_path"]) {
+      if (toolInput[key] !== undefined)
+        safe[key] = toolInput[key];
+    }
+    inputSummary = JSON.stringify(safe);
+  } else if (toolName === "Bash") {
     inputSummary = String(toolInput["command"] ?? "");
   } else {
     inputSummary = JSON.stringify(toolInput).slice(0, 200);
@@ -6517,7 +7212,7 @@ function buildAuditEntry({
     rule: result.matchedRule ?? null,
     tid: toolUseId
   };
-  if (normalisedCommand && normalisedCommand !== inputSummary) {
+  if (normalisedCommand && normalisedCommand !== inputSummary && !secretsMatch) {
     entry.normalised = normalisedCommand;
   }
   return entry;
@@ -6643,7 +7338,19 @@ function defaultGuidance(config) {
   ];
   return lines;
 }
-function buildGuidance(config) {
+function secretsGuidance(config, scannerName) {
+  if (!config.secrets?.enabled)
+    return [];
+  if (scannerName === null) {
+    return [
+      "⚠ Fencepost secrets protection is enabled but no supported scanner is installed, so secret scanning is INACTIVE. Tell the user to install one: 'brew install gitleaks' (recommended, fastest), 'brew install trufflehog', or 'pipx install detect-secrets'."
+    ];
+  }
+  return [
+    `Secrets protection is active (scanner: ${scannerName}). Tool inputs containing credentials are denied, and secrets in tool output are replaced with [FENCEPOST:REDACTED ...] placeholders. Placeholders are not recoverable: never try to reconstruct, re-read, or guess a redacted value.`
+  ];
+}
+function buildGuidance(config, secretsScanner) {
   const guidance = config.guidance;
   const enabled = guidance?.enabled ?? true;
   if (!enabled)
@@ -6652,6 +7359,8 @@ function buildGuidance(config) {
   const lines = [];
   if (includeDefaults)
     lines.push(...defaultGuidance(config));
+  if (secretsScanner !== undefined)
+    lines.push(...secretsGuidance(config, secretsScanner));
   if (guidance?.extra?.length)
     lines.push(...guidance.extra);
   if (lines.length === 0)
@@ -6683,9 +7392,12 @@ switch (subcommand) {
   case "sessionstart":
     await runSessionStart();
     break;
+  case "posttooluse":
+    await runPostToolUse();
+    break;
   default:
     process.stderr.write(`Unknown subcommand: ${subcommand}
-Usage: fencepost [evaluate|sessionstart|audit|config|verify] [--verbose]
+Usage: fencepost [evaluate|posttooluse|sessionstart|audit|config|verify] [--verbose]
 `);
     process.exit(1);
 }
@@ -6717,7 +7429,11 @@ async function runEvaluate() {
     }
     const { input: effectiveInput, changed } = redirectToolInput(input.tool_name, input.tool_input, config);
     const evalInput = changed ? { ...input, tool_input: effectiveInput } : input;
-    const result = await evaluate(evalInput, config);
+    let result = await evaluate(evalInput, config);
+    if (result.decision !== "deny" && config.secrets?.enabled && config.secrets.scanInputs !== false) {
+      const { scanToolInput: scanToolInput2 } = await Promise.resolve().then(() => (init_scan(), exports_scan));
+      result = await scanToolInput2(evalInput, config) ?? result;
+    }
     let normalisedCommand;
     if (evalInput.tool_name === "Bash") {
       const raw = String(evalInput.tool_input["command"] ?? "");
@@ -6759,12 +7475,63 @@ async function runEvaluate() {
     process.exit(0);
   }
 }
+async function runPostToolUse() {
+  try {
+    const input = await readStdin();
+    if (!input)
+      process.exit(0);
+    const compiled = await compileConfig(input.cwd);
+    const config = compiled.config;
+    if (!compiled.ok || !config.secrets?.enabled || config.secrets.scanOutputs === false) {
+      process.exit(0);
+    }
+    const { scanToolOutput: scanToolOutput2, redactionContext: redactionContext2 } = await Promise.resolve().then(() => (init_scan(), exports_scan));
+    const scan = await scanToolOutput2(input.tool_name, input.tool_response, config);
+    if (!scan)
+      process.exit(0);
+    const entry = buildAuditEntry({
+      sessionId: input.session_id,
+      toolUseId: input.tool_use_id,
+      toolName: input.tool_name,
+      toolInput: input.tool_input,
+      result: {
+        decision: "allow",
+        reason: "secrets redacted from tool output",
+        matchedRule: `secrets.${scan.redactions[0]?.scanner ?? "unknown"}`
+      }
+    });
+    entry.secrets = {
+      scanner: scan.redactions[0]?.scanner ?? "unknown",
+      rules: scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
+      count: scan.redactions.reduce((n, r) => n + r.count, 0)
+    };
+    writeAuditEntry(entry, input.cwd);
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        updatedToolOutput: scan.updatedToolOutput,
+        additionalContext: redactionContext2(scan.redactions)
+      }
+    };
+    process.stdout.write(JSON.stringify(output) + `
+`);
+    process.exit(0);
+  } catch (err2) {
+    logger2.error({ err: err2 }, "unhandled error in posttooluse, passing output through");
+    process.exit(0);
+  }
+}
 async function runSessionStart() {
   try {
     const input = await readStdin();
     const cwd = input?.cwd ?? process.cwd();
     const compiled = await compileConfig(cwd);
-    let context = buildGuidance(compiled.config);
+    let secretsScanner;
+    if (compiled.config.secrets?.enabled) {
+      const { findScanner: findScanner3 } = await Promise.resolve().then(() => (init_detect2(), exports_detect));
+      secretsScanner = findScanner3(compiled.config.secrets)?.name ?? null;
+    }
+    let context = buildGuidance(compiled.config, secretsScanner);
     if (!compiled.ok) {
       const detail = compiled.errors.map((e) => `${e.file}: ${e.message}`).join("; ");
       const warn = `\u26A0 Fencepost config is INVALID and is failing closed (all tool calls will be denied) until fixed: ${detail}`;

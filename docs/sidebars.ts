@@ -32,6 +32,7 @@ const sidebars: SidebarsConfig = {
         'configuration/structured-bash-rules',
         'configuration/interpreters',
         'configuration/sandbox',
+        'configuration/secrets',
         'configuration/guidance-and-chaining',
       ],
     },

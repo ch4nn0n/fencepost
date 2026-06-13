@@ -16,6 +16,7 @@ fencepost reads config from your project's `.claude/` directory. The simplest fo
 import:
   - claude        # allow Claude's built-in tools + enable the /tmp sandbox
   - git           # sensible git porcelain rules
+  - secrets       # deny secret-bearing inputs, redact secrets from output
 
 # What to do when nothing matches.
 default: ask
@@ -24,7 +25,7 @@ default: ask
 onError: ask
 ```
 
-That's enough to be useful. `claude` allows routine file tools and turns on the scratch sandbox; `git` allows everyday porcelain, asks before history rewrites, and denies force-pushes. Everything else falls through to `ask`.
+That's enough to be useful. `claude` allows routine file tools and turns on the scratch sandbox; `git` allows everyday porcelain, asks before history rewrites, and denies force-pushes; `secrets` scans tool calls with your installed secret scanner ([gitleaks recommended](../configuration/secrets.md)). Everything else falls through to `ask`.
 
 ## 2. Start a session
 

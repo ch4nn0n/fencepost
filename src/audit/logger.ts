@@ -33,9 +33,18 @@ export function buildAuditEntry({
   result: import("../types.js").EvalResult;
   normalisedCommand?: string;
 }): AuditEntry {
-  // Summarise tool input
+  // Summarise tool input. When the secrets scanner matched, the input body
+  // contains a secret by definition — log target paths only, never content
+  // (and for Bash, never the command, which embeds the value).
+  const secretsMatch = result.matchedRule?.startsWith("secrets.") === true;
   let inputSummary: string;
-  if (toolName === "Bash") {
+  if (secretsMatch) {
+    const safe: Record<string, unknown> = {};
+    for (const key of ["file_path", "notebook_path"]) {
+      if (toolInput[key] !== undefined) safe[key] = toolInput[key];
+    }
+    inputSummary = JSON.stringify(safe);
+  } else if (toolName === "Bash") {
     inputSummary = String(toolInput["command"] ?? "");
   } else {
     inputSummary = JSON.stringify(toolInput).slice(0, 200);
@@ -52,7 +61,7 @@ export function buildAuditEntry({
     tid: toolUseId,
   };
 
-  if (normalisedCommand && normalisedCommand !== inputSummary) {
+  if (normalisedCommand && normalisedCommand !== inputSummary && !secretsMatch) {
     entry.normalised = normalisedCommand;
   }
 

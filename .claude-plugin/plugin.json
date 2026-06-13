@@ -18,6 +18,17 @@
         ]
       }
     ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{{PLUGIN_DIR}}/hooks/post-tool-use.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

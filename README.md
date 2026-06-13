@@ -6,7 +6,7 @@
 [![Docs](https://github.com/ch4nn0n/fencepost/actions/workflows/docs.yml/badge.svg)](https://ch4nn0n.github.io/fencepost/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
 
-fencepost installs as a [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin and runs on the `PreToolUse` hook, so it sees **every tool call before it happens** and evaluates it against a YAML rule set you control. Each call resolves to one of three decisions:
+fencepost installs as a [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin and runs on the `PreToolUse` hook (plus `PostToolUse` for secrets redaction), so it sees **every tool call before it happens** and evaluates it against a YAML rule set you control. Each call resolves to one of three decisions:
 
 | Decision | What happens | Reason shown to |
 |----------|--------------|-----------------|
@@ -23,6 +23,7 @@ A denial isn't a dead end: fencepost steers Claude toward the suggested alternat
 - **Curated, shareable rules.** Import battle-tested rule sets for `git`, `kubernetes`, `helm`, `ansible`, `filesystem` and more with one line.
 - **Real bash understanding.** Commands are parsed with tree-sitter, not pattern-matched — fencepost reasons about redirections, every argument, compound commands, and even inline `python -c` / `node -e` snippets.
 - **A scratch sandbox.** Funnel temp files into `/tmp/claude` and scope destructive permissions to it; the rest of the filesystem stays gated.
+- **Secrets protection.** Using whichever of gitleaks / trufflehog / detect-secrets you have installed, fencepost denies tool inputs that embed credentials and redacts secrets from tool output before they reach the model.
 - **Fail-closed safety.** A broken security config denies everything until a human fixes it, rather than silently degrading.
 - **An audit trail.** Every decision is logged; the `/audit` skill turns real usage into concrete config suggestions.
 
@@ -71,7 +72,7 @@ Layer your own rules on top — imports are the base, your rules always win. See
 
 ## Bundled presets
 
-`claude` · `claude-web` · `git` · `gh` · `kubernetes` · `helm` · `helmfile` · `ansible` · `context7` · `playwright` · `filesystem` · `python-safety`
+`claude` · `claude-web` · `git` · `gh` · `kubernetes` · `helm` · `helmfile` · `ansible` · `context7` · `playwright` · `filesystem` · `python-safety` · `secrets`
 
 See the [preset reference](https://ch4nn0n.github.io/fencepost/docs/presets).
 

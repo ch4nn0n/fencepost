@@ -34,9 +34,12 @@ switch (subcommand) {
   case "sessionstart":
     await runSessionStart();
     break;
+  case "posttooluse":
+    await runPostToolUse();
+    break;
   default:
     process.stderr.write(
-      `Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|sessionstart|audit|config|verify] [--verbose]\n`,
+      `Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|posttooluse|sessionstart|audit|config|verify] [--verbose]\n`,
     );
     process.exit(1);
 }
@@ -84,7 +87,14 @@ async function runEvaluate(): Promise<void> {
     );
     const evalInput = changed ? { ...input, tool_input: effectiveInput } : input;
 
-    const result = await evaluate(evalInput, config);
+    let result = await evaluate(evalInput, config);
+
+    // Secrets scan of the tool input (feature 24). Lazy import keeps the fast
+    // path fast; skipped when the rules already denied.
+    if (result.decision !== "deny" && config.secrets?.enabled && config.secrets.scanInputs !== false) {
+      const { scanToolInput } = await import("./secrets/scan.js");
+      result = (await scanToolInput(evalInput, config)) ?? result;
+    }
 
     // Determine the normalised command for audit (if Bash)
     let normalisedCommand: string | undefined;
@@ -140,6 +150,60 @@ async function runEvaluate(): Promise<void> {
   }
 }
 
+// ---- posttooluse subcommand ----
+
+async function runPostToolUse(): Promise<void> {
+  // Always fail open: PostToolUse must never disturb the session. Config
+  // errors are already surfaced (fail-closed) by the PreToolUse hook, so a
+  // broken config simply means no redaction here.
+  try {
+    const input = await readStdin();
+    if (!input) process.exit(0);
+
+    const compiled = await compileConfig(input.cwd);
+    const config = compiled.config;
+    if (!compiled.ok || !config.secrets?.enabled || config.secrets.scanOutputs === false) {
+      process.exit(0);
+    }
+
+    const { scanToolOutput, redactionContext } = await import("./secrets/scan.js");
+    const scan = await scanToolOutput(input.tool_name, input.tool_response, config);
+    if (!scan) process.exit(0);
+
+    // Audit the redaction (rule ids and counts only — never values).
+    const entry = buildAuditEntry({
+      sessionId: input.session_id,
+      toolUseId: input.tool_use_id,
+      toolName: input.tool_name,
+      toolInput: input.tool_input as Record<string, unknown>,
+      result: {
+        decision: "allow",
+        reason: "secrets redacted from tool output",
+        matchedRule: `secrets.${scan.redactions[0]?.scanner ?? "unknown"}`,
+      },
+    });
+    entry.secrets = {
+      scanner: scan.redactions[0]?.scanner ?? "unknown",
+      rules: scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
+      count: scan.redactions.reduce((n, r) => n + r.count, 0),
+    };
+    void writeAuditEntry(entry, input.cwd);
+
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "PostToolUse",
+        updatedToolOutput: scan.updatedToolOutput,
+        additionalContext: redactionContext(scan.redactions),
+      },
+    };
+    process.stdout.write(JSON.stringify(output) + "\n");
+    process.exit(0);
+  } catch (err) {
+    logger.error({ err }, "unhandled error in posttooluse, passing output through");
+    process.exit(0);
+  }
+}
+
 // ---- sessionstart subcommand ----
 
 async function runSessionStart(): Promise<void> {
@@ -149,7 +213,15 @@ async function runSessionStart(): Promise<void> {
     const cwd = (input?.cwd as string | undefined) ?? process.cwd();
     const compiled = await compileConfig(cwd);
 
-    let context = buildGuidance(compiled.config);
+    // Probe scanner availability (PATH scan, sub-millisecond) so the guidance
+    // can warn when secrets protection is enabled but inactive.
+    let secretsScanner: string | null | undefined;
+    if (compiled.config.secrets?.enabled) {
+      const { findScanner } = await import("./secrets/detect.js");
+      secretsScanner = findScanner(compiled.config.secrets)?.name ?? null;
+    }
+
+    let context = buildGuidance(compiled.config, secretsScanner);
     // Surface a broken config loudly at session start so the human fixes it.
     if (!compiled.ok) {
       const detail = compiled.errors.map((e) => `${e.file}: ${e.message}`).join("; ");

@@ -20,6 +20,7 @@ import type {
   WriteRule,
   ImportRule,
   InterpreterConfig,
+  SecretsConfig,
   Decision,
 } from "./types.js";
 
@@ -64,12 +65,26 @@ const DEFAULT_REDIRECT_CONFIG: RedirectConfig = {
 // Optimised for an interactive human: when we can't decide, ask.
 const DEFAULT_ON_ERROR: Decision = "ask";
 
+// Secrets scanning is opt-in at the core level; the `secrets` preset turns it on.
+export const DEFAULT_SECRETS_CONFIG: SecretsConfig = {
+  enabled: false,
+  scanner: "auto",
+  scanInputs: true,
+  scanOutputs: true,
+  inputTools: ["Write", "Edit", "NotebookEdit", "Bash"],
+  outputTools: ["Read", "Bash", "Grep", "WebFetch"],
+  allow: { paths: [], rules: [] },
+  maxScanBytes: 1048576, // 1 MiB
+  timeoutMs: 3000,
+};
+
 export const DEFAULT_CONFIG: FencepostConfig = {
   default: "ask",
   onError: DEFAULT_ON_ERROR,
   tools: DEFAULT_TOOLS_CONFIG,
   guidance: DEFAULT_GUIDANCE_CONFIG,
   redirect: DEFAULT_REDIRECT_CONFIG,
+  secrets: DEFAULT_SECRETS_CONFIG,
 };
 
 // ---- Issue collection ----
@@ -253,6 +268,36 @@ function parseInterpreters(raw: unknown, source: string): Record<string, Interpr
   return out;
 }
 
+const SECRET_SCANNER_NAMES = ["auto", "gitleaks", "trufflehog", "detect-secrets"] as const;
+
+/** Parse a `secrets:` block. Unset fields stay undefined so merging is field-level. */
+function parseSecrets(raw: unknown, source: string): SecretsConfig | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const o = raw as Record<string, unknown>;
+  const out: SecretsConfig = {};
+
+  if (typeof o["enabled"] === "boolean") out.enabled = o["enabled"];
+  if (o["scanner"] !== undefined) {
+    if ((SECRET_SCANNER_NAMES as readonly string[]).includes(String(o["scanner"]))) {
+      out.scanner = o["scanner"] as SecretsConfig["scanner"];
+    } else {
+      note("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|trufflehog|detect-secrets), ignoring`);
+    }
+  }
+  if (typeof o["scanInputs"] === "boolean") out.scanInputs = o["scanInputs"];
+  if (typeof o["scanOutputs"] === "boolean") out.scanOutputs = o["scanOutputs"];
+  if (o["inputTools"] !== undefined) out.inputTools = asStringArray(o["inputTools"]);
+  if (o["outputTools"] !== undefined) out.outputTools = asStringArray(o["outputTools"]);
+  if (typeof o["allow"] === "object" && o["allow"] !== null) {
+    const a = o["allow"] as Record<string, unknown>;
+    out.allow = { paths: asStringArray(a["paths"]), rules: asStringArray(a["rules"]) };
+  }
+  if (typeof o["maxScanBytes"] === "number" && o["maxScanBytes"] > 0) out.maxScanBytes = o["maxScanBytes"];
+  if (typeof o["timeoutMs"] === "number" && o["timeoutMs"] > 0) out.timeoutMs = o["timeoutMs"];
+
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /**
  * Validate one parsed config object. Returns null on a *structural* (fatal)
  * problem — wrong top-level shape or an invalid `default`/`onError` value — and
@@ -398,6 +443,8 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   if (onError) result.onError = onError;
   if (guidance) result.guidance = guidance;
   if (redirect) result.redirect = redirect;
+  const secrets = parseSecrets(obj["secrets"], source);
+  if (secrets) result.secrets = secrets;
   return result;
 }
 
@@ -422,6 +469,33 @@ function mergeInterpreters(
       : { ...cfg };
   }
   return out;
+}
+
+/**
+ * Merge secrets blocks field-by-field: scalars override-when-set, allowlists
+ * concatenate. Block-level last-wins would let a user's small override (e.g.
+ * just an allow path) silently disable a preset's `enabled: true`.
+ */
+function mergeSecrets(
+  base: SecretsConfig | undefined,
+  override: SecretsConfig | undefined,
+): SecretsConfig | undefined {
+  if (!base) return override;
+  if (!override) return base;
+  return {
+    enabled: override.enabled ?? base.enabled,
+    scanner: override.scanner ?? base.scanner,
+    scanInputs: override.scanInputs ?? base.scanInputs,
+    scanOutputs: override.scanOutputs ?? base.scanOutputs,
+    inputTools: override.inputTools ?? base.inputTools,
+    outputTools: override.outputTools ?? base.outputTools,
+    allow: {
+      paths: [...(base.allow?.paths ?? []), ...(override.allow?.paths ?? [])],
+      rules: [...(base.allow?.rules ?? []), ...(override.allow?.rules ?? [])],
+    },
+    maxScanBytes: override.maxScanBytes ?? base.maxScanBytes,
+    timeoutMs: override.timeoutMs ?? base.timeoutMs,
+  };
 }
 
 function mergeConfigs(base: FencepostConfig, override: FencepostConfig): FencepostConfig {
@@ -450,6 +524,7 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
     // Block-level last-wins: an override that omits the block inherits the base.
     guidance: override.guidance ?? base.guidance,
     redirect: override.redirect ?? base.redirect,
+    secrets: mergeSecrets(base.secrets, override.secrets),
   };
 }
 
