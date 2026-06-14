@@ -10,8 +10,10 @@
  *     new process, matching how the one-shot hook actually runs), reporting
  *     median / p95 latency per input size.
  *
- * Output is a markdown table, so CI (which installs specific scanner versions)
- * and the docs can quote the same numbers. Run: `bun run scripts/scanner-bench.ts`.
+ * `collectResults()` is exported so the docs regenerator
+ * (`scripts/sync-secrets-docs.ts`) and the ordering guard
+ * (`scripts/scanner-ordering-check.ts`) share one code path. Run directly for a
+ * markdown report: `bun run scripts/scanner-bench.ts`.
  */
 import { spawnSync } from "node:child_process";
 import { binaryOnPath } from "../src/secrets/detect.js";
@@ -24,7 +26,7 @@ import type { SecretScanner } from "../src/secrets/scanner.js";
 // Assembled from fragments so the literal token never sits in a committed file.
 const PAT = "ghp_" + "wWPw5k4aXcaT4fNP0UcnZwJUVFk6LO0pINUx";
 
-const ITERS = Number(process.env["BENCH_ITERS"] ?? 9); // first run is dropped as war-up
+const ITERS = Number(process.env["BENCH_ITERS"] ?? 9); // first run is dropped as warm-up
 const TIMEOUT_MS = 60_000;
 
 interface Target {
@@ -33,11 +35,15 @@ interface Target {
   version(): string;
 }
 
+// Pull the bare semver out of whatever the `version` command prints (trufflehog
+// prefixes the binary name, detect-secrets may add labels, etc.).
+const semver = (s: string): string => s.match(/\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?/)?.[0] ?? s;
+
 const ALL_TARGETS: Target[] = [
-  { name: "gitleaks", scanner: new GitleaksScanner(), version: () => run("gitleaks", ["version"]) },
-  { name: "betterleaks", scanner: new BetterleaksScanner(), version: () => run("betterleaks", ["version"]) },
-  { name: "trufflehog", scanner: new TrufflehogScanner(), version: () => run("trufflehog", ["--version"]) },
-  { name: "detect-secrets", scanner: new DetectSecretsScanner(), version: () => run("detect-secrets", ["--version"]) },
+  { name: "gitleaks", scanner: new GitleaksScanner(), version: () => semver(run("gitleaks", ["version"])) },
+  { name: "betterleaks", scanner: new BetterleaksScanner(), version: () => semver(run("betterleaks", ["version"])) },
+  { name: "trufflehog", scanner: new TrufflehogScanner(), version: () => semver(run("trufflehog", ["--version"])) },
+  { name: "detect-secrets", scanner: new DetectSecretsScanner(), version: () => semver(run("detect-secrets", ["--version"])) },
 ];
 
 // BENCH_SCANNERS=gitleaks,detect-secrets restricts the run (handy when one
@@ -76,55 +82,100 @@ async function bench(scanner: SecretScanner, content: string): Promise<number[]>
   return samples;
 }
 
-const SIZES: Array<{ label: string; bytes: number }> = [
+export const SIZES: Array<{ label: string; bytes: number }> = [
   { label: "1 KB", bytes: 1024 },
   { label: "50 KB", bytes: 50 * 1024 },
 ];
 
-async function main(): Promise<void> {
-  const rows: string[] = [];
-  const compat: string[] = [];
+export interface SizeResult {
+  label: string;
+  bytes: number;
+  median: number;
+  p95: number;
+  min: number;
+}
+
+export interface ScannerResult {
+  name: string;
+  installed: boolean;
+  version: string;
+  /** correctness probe: the known corpus produced at least one finding */
+  ok: boolean;
+  detail: string;
+  sizes: SizeResult[];
+}
+
+export interface BenchReport {
+  host: string;
+  iters: number;
+  results: ScannerResult[];
+}
+
+/**
+ * Probe, correctness-check, and time every selected scanner installed on PATH.
+ * Pure data — callers render it (markdown report, docs table, ordering guard).
+ */
+export async function collectResults(): Promise<BenchReport> {
+  const results: ScannerResult[] = [];
 
   for (const target of TARGETS) {
     if (!binaryOnPath(target.name)) {
-      compat.push(`| ${target.name} | _not installed_ | skipped |`);
+      results.push({ name: target.name, installed: false, version: "", ok: false, detail: "not installed", sizes: [] });
       continue;
     }
     const version = target.version();
 
     // Compatibility: the known corpus must produce at least one finding.
-    const probe = corpus(512);
     let ok = false;
     let detail = "";
     try {
-      const findings = await target.scanner.scan(probe, TIMEOUT_MS);
+      const findings = await target.scanner.scan(corpus(512), TIMEOUT_MS);
       ok = findings.length > 0;
       detail = `${findings.length} finding(s)`;
     } catch (err) {
       detail = `error: ${(err as Error).message.slice(0, 60)}`;
     }
-    compat.push(`| ${target.name} | \`${version}\` | ${ok ? "✅ " : "❌ "}${detail} |`);
-    if (!ok) continue;
 
-    for (const size of SIZES) {
-      const samples = await bench(target.scanner, corpus(size.bytes));
-      const { median, p95, min } = stats(samples);
-      rows.push(
-        `| ${target.name} | \`${version}\` | ${size.label} | ${median.toFixed(0)} | ${p95.toFixed(0)} | ${min.toFixed(0)} |`,
+    const sizes: SizeResult[] = [];
+    if (ok) {
+      for (const size of SIZES) {
+        const samples = await bench(target.scanner, corpus(size.bytes));
+        sizes.push({ label: size.label, bytes: size.bytes, ...stats(samples) });
+      }
+    }
+    results.push({ name: target.name, installed: true, version, ok, detail, sizes });
+  }
+
+  return { host: run("uname", ["-sm"]), iters: ITERS, results };
+}
+
+function renderMarkdown(report: BenchReport): string {
+  const out: string[] = [];
+  out.push(`\n## Scanner compatibility (host: ${report.host}, iters: ${report.iters})\n`);
+  out.push("| Scanner | Version | Correctness |");
+  out.push("|---|---|---|");
+  for (const r of report.results) {
+    if (!r.installed) {
+      out.push(`| ${r.name} | _not installed_ | skipped |`);
+      continue;
+    }
+    out.push(`| ${r.name} | \`${r.version}\` | ${r.ok ? "✅ " : "❌ "}${r.detail} |`);
+  }
+  out.push("\n## Scan latency (ms, end to end per invocation)\n");
+  out.push("| Scanner | Version | Input size | Median | p95 | Min |");
+  out.push("|---|---|---|---|---|---|");
+  for (const r of report.results) {
+    for (const s of r.sizes) {
+      out.push(
+        `| ${r.name} | \`${r.version}\` | ${s.label} | ${s.median.toFixed(0)} | ${s.p95.toFixed(0)} | ${s.min.toFixed(0)} |`,
       );
     }
   }
-
-  const node = run("uname", ["-sm"]);
-  console.log(`\n## Scanner compatibility (host: ${node}, iters: ${ITERS})\n`);
-  console.log("| Scanner | Version | Correctness |");
-  console.log("|---|---|---|");
-  console.log(compat.join("\n"));
-  console.log("\n## Scan latency (ms, end to end per invocation)\n");
-  console.log("| Scanner | Version | Input size | Median | p95 | Min |");
-  console.log("|---|---|---|---|---|---|");
-  console.log(rows.join("\n"));
-  console.log("");
+  out.push("");
+  return out.join("\n");
 }
 
-await main();
+// Run directly → print the markdown report.
+if (import.meta.main) {
+  console.log(renderMarkdown(await collectResults()));
+}
