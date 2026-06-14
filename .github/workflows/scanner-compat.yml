@@ -1,0 +1,112 @@
+name: Scanner compatibility
+
+# Verifies the secret-scanner adapters against multiple versions of each
+# supported scanner, so the version-compatibility claims in the docs stay true.
+# Runs on changes to the adapters/tests and weekly to catch new releases.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/secrets/**"
+      - "test/secrets/**"
+      - ".github/workflows/scanner-compat.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/secrets/**"
+      - "test/secrets/**"
+      - ".github/workflows/scanner-compat.yml"
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    name: gitleaks ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["8.19.3", "8.28.0"] # documented floor + latest verified
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+      - run: bun install --frozen-lockfile
+      - name: Install gitleaks ${{ matrix.version }}
+        run: |
+          curl -sSL -o gl.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${{ matrix.version }}/gitleaks_${{ matrix.version }}_linux_x64.tar.gz"
+          tar xzf gl.tar.gz gitleaks
+          sudo install gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - run: bun test test/secrets/
+
+  betterleaks:
+    name: betterleaks ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["1.5.0"] # gitleaks-compatible successor; latest verified
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+      - run: bun install --frozen-lockfile
+      - name: Install betterleaks ${{ matrix.version }}
+        run: |
+          curl -sSL -o bl.tar.gz \
+            "https://github.com/betterleaks/betterleaks/releases/download/v${{ matrix.version }}/betterleaks_${{ matrix.version }}_linux_x64.tar.gz"
+          tar xzf bl.tar.gz betterleaks
+          sudo install betterleaks /usr/local/bin/betterleaks
+          betterleaks version
+      - run: bun test test/secrets/
+
+  trufflehog:
+    name: trufflehog ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["3.63.7", "3.91.1"] # oldest verified + latest verified
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+      - run: bun install --frozen-lockfile
+      - name: Install trufflehog ${{ matrix.version }}
+        run: |
+          curl -sSL -o th.tar.gz \
+            "https://github.com/trufflesecurity/trufflehog/releases/download/v${{ matrix.version }}/trufflehog_${{ matrix.version }}_linux_amd64.tar.gz"
+          tar xzf th.tar.gz trufflehog
+          sudo install trufflehog /usr/local/bin/trufflehog
+          trufflehog --version
+      - run: bun test test/secrets/
+
+  detect-secrets:
+    name: detect-secrets ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["1.4.0", "1.5.0"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+      - run: bun install --frozen-lockfile
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install detect-secrets ${{ matrix.version }}
+        run: |
+          pipx install "detect-secrets==${{ matrix.version }}"
+          detect-secrets --version
+      - run: bun test test/secrets/

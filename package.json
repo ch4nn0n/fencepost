@@ -30,6 +30,7 @@
   },
   "scripts": {
     "build": "bun run scripts/build.ts",
+    "bench:scanners": "bun run scripts/scanner-bench.ts",
     "dev": "bun run src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
