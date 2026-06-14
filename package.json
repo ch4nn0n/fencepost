@@ -31,6 +31,10 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "bench:scanners": "bun run scripts/scanner-bench.ts",
+    "bench:docs": "bun run scripts/sync-secrets-docs.ts --bench",
+    "bench:ordering": "bun run scripts/scanner-ordering-check.ts",
+    "docs:floors": "bun run scripts/sync-secrets-docs.ts",
+    "docs:floors:check": "bun run scripts/sync-secrets-docs.ts --check",
     "dev": "bun run src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
