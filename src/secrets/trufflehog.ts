@@ -52,11 +52,15 @@ export class TrufflehogScanner implements SecretScanner {
       const file = join(dir, "content");
       await writeFile(file, content, { mode: 0o600 });
 
-      const baseArgs = ["filesystem", file, "--json", "--no-verification", "--log-level=-1"];
-      // Vanilla installs need --no-update to skip the network update check, but
-      // some wrappers (e.g. nix) already inject it and kingpin rejects repeats.
+      // Keep the flag set minimal for cross-version compatibility: --log-level
+      // (added in newer 3.6x) is omitted because parseTrufflehogOutput already
+      // skips the JSON log lines, so older builds (e.g. 3.63) work too.
+      const baseArgs = ["filesystem", file, "--json", "--no-verification"];
+      // --no-update skips the network update check on vanilla installs, but some
+      // builds reject it (already injected by a wrapper, or unknown on old
+      // versions). On ANY first-attempt failure, retry without it.
       let result = await runScanner("trufflehog", [...baseArgs, "--no-update"], null, timeoutMs);
-      if (result.exitCode !== 0 && /cannot be repeated/.test(result.stderr)) {
+      if (result.exitCode !== 0) {
         result = await runScanner("trufflehog", baseArgs, null, timeoutMs);
       }
       if (result.exitCode !== 0) {
