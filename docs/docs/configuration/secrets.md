@@ -91,22 +91,21 @@ Audit entries record the scanner, rule ids, and counts — **never** secret valu
 
 ## Scanner compatibility and performance
 
-Fencepost's adapters are verified against multiple versions of each scanner by the [`scanner-compat` workflow](https://github.com/ch4nn0n/fencepost/actions/workflows/scanner-compat.yml), which installs each version and runs the real-binary integration tests. The versions below are the ones currently exercised in CI.
+Fencepost's adapters are verified against multiple versions of each scanner by the [`scanner-compat` workflow](https://github.com/ch4nn0n/fencepost/actions/workflows/scanner-compat.yml). It does **not** hard-code versions: a setup job resolves the **latest 4 releases** of each scanner live (from the GitHub Releases API, or PyPI for detect-secrets) and appends the documented minimum floor, then installs each and runs the real-binary integration tests.
 
-| Scanner | Minimum supported | Versions verified in CI | Notes |
+| Scanner | Minimum supported | Tested in CI | Notes |
 |---|---|---|---|
-| gitleaks | **8.19.3** | 8.19.3, 8.28.0 | 8.19.0–8.19.2 ship the `stdin` command but reject our report flags; 8.18.x has no `stdin` command at all. |
-| betterleaks | **1.5.0** | 1.5.0 | Shares gitleaks' `stdin -f json` interface and report shape. |
-| trufflehog | **3.63.7** | 3.63.7, 3.91.1 | Older releases use the same `filesystem --json` interface; line numbers are absent before later 3.6x builds, which only affects the (advisory) reported line. |
-| detect-secrets | **1.4.0** | 1.4.0, 1.5.0 | The `scan` baseline JSON shape has been stable across 1.4–1.5. |
+| gitleaks | **8.19.3** | latest 4 releases + floor | 8.19.0–8.19.2 ship the `stdin` command but reject our report flags; 8.18.x has no `stdin` command at all. |
+| betterleaks | **1.5.0** | latest 4 releases + floor | Shares gitleaks' `stdin -f json` interface and report shape. |
+| trufflehog | **3.63.7** | latest 4 releases + floor | Older releases use the same `filesystem --json` interface; line numbers are absent before later 3.6x builds, which only affects the (advisory) reported line. |
+| detect-secrets | **1.4.0** | latest 4 releases + floor | The `scan` baseline JSON shape has been stable across 1.2–1.5. |
 
 ### Version support policy
 
-- The **latest stable release** of each scanner is always supported and verified in CI on every change to the adapters.
-- Each scanner has a **minimum supported version** (above) — the oldest release that works with fencepost's adapter — also verified in CI.
-- As a commitment, fencepost supports **at least the latest release and the three most recent minor releases** of each scanner (an "N-3" floor). In practice the supported window is much wider: the documented minimums above reach years back.
-- Everything between the minimum and the latest is supported on a best-effort basis. A **weekly scheduled CI run** re-checks the latest releases, so a breaking scanner change is caught quickly.
-- A minimum only moves **forward**, and only when a scanner's CLI or output format changes in a way the adapter cannot bridge. Such a change is called out in the release notes.
+- CI tests the **latest four releases** of each scanner — the current release plus the three before it — resolved live so the set tracks upstream, plus the documented **minimum supported version** (the oldest release the adapter still works with).
+- This is the **N-3** window: the current release and the three preceding it are continuously verified.
+- A **weekly scheduled run** re-resolves the latest releases, so a new scanner release that breaks an adapter is caught within a week (and on the next change to the adapters).
+- Versions between the minimum and the tested window are supported on a best-effort basis. A minimum only moves **forward**, and only when a scanner's CLI or output format changes in a way the adapter cannot bridge; such a change is called out in the release notes.
 
 You can reproduce the numbers below with `bun run scripts/scanner-bench.ts` (set `BENCH_SCANNERS=` / `BENCH_ITERS=` to narrow or lengthen the run).
 

@@ -2,7 +2,12 @@ name: Scanner compatibility
 
 # Verifies the secret-scanner adapters against multiple versions of each
 # supported scanner, so the version-compatibility claims in the docs stay true.
-# Runs on changes to the adapters/tests and weekly to catch new releases.
+#
+# Versions are resolved LIVE (not hard-coded): the `setup` job queries each
+# scanner's release feed for the latest 4 releases (the current release plus the
+# three before it, i.e. the N-3 support window) and appends the documented
+# minimum-supported floor. The weekly cron therefore genuinely picks up new
+# releases and fails if one breaks an adapter.
 on:
   push:
     branches: [main]
@@ -23,13 +28,57 @@ permissions:
   contents: read
 
 jobs:
+  setup:
+    name: Resolve scanner versions
+    runs-on: ubuntu-latest
+    outputs:
+      gitleaks: ${{ steps.resolve.outputs.gitleaks }}
+      betterleaks: ${{ steps.resolve.outputs.betterleaks }}
+      trufflehog: ${{ steps.resolve.outputs.trufflehog }}
+      detect_secrets: ${{ steps.resolve.outputs.detect_secrets }}
+    steps:
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Latest 4 stable GitHub releases (tag without leading v) + a floor.
+          gh_latest() {
+            gh api "repos/$1/releases" \
+              --jq '[.[] | select(.prerelease==false and .draft==false) | .tag_name | ltrimstr("v")] | .[0:4]' \
+              | jq -c --arg f "$2" 'if index($f) then . else . + [$f] end'
+          }
+          # Latest 4 stable PyPI releases + a floor.
+          ds_latest() {
+            curl -fsSL https://pypi.org/pypi/detect-secrets/json \
+              | jq -r '.releases | keys[]' \
+              | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 4 \
+              | jq -R . | jq -sc --arg f "$1" 'if index($f) then . else . + [$f] end'
+          }
+          # Assign first so `set -e` aborts on a failed API call instead of
+          # silently emitting an empty matrix (which would skip the job).
+          gl=$(gh_latest gitleaks/gitleaks 8.19.3)
+          bl=$(gh_latest betterleaks/betterleaks 1.5.0)
+          th=$(gh_latest trufflesecurity/trufflehog 3.63.7)
+          ds=$(ds_latest 1.4.0)
+          for v in "$gl" "$bl" "$th" "$ds"; do
+            case "$v" in \[*\]) ;; *) echo "version resolution failed: '$v'" >&2; exit 1 ;; esac
+          done
+          {
+            echo "gitleaks=$gl"
+            echo "betterleaks=$bl"
+            echo "trufflehog=$th"
+            echo "detect_secrets=$ds"
+          } | tee -a "$GITHUB_OUTPUT"
+
   gitleaks:
     name: gitleaks ${{ matrix.version }}
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        version: ["8.19.3", "8.28.0"] # documented floor + latest verified
+        version: ${{ fromJSON(needs.setup.outputs.gitleaks) }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -47,11 +96,12 @@ jobs:
 
   betterleaks:
     name: betterleaks ${{ matrix.version }}
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        version: ["1.5.0"] # gitleaks-compatible successor; latest verified
+        version: ${{ fromJSON(needs.setup.outputs.betterleaks) }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -69,11 +119,12 @@ jobs:
 
   trufflehog:
     name: trufflehog ${{ matrix.version }}
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        version: ["3.63.7", "3.91.1"] # oldest verified + latest verified
+        version: ${{ fromJSON(needs.setup.outputs.trufflehog) }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
@@ -91,11 +142,12 @@ jobs:
 
   detect-secrets:
     name: detect-secrets ${{ matrix.version }}
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        version: ["1.4.0", "1.5.0"]
+        version: ${{ fromJSON(needs.setup.outputs.detect_secrets) }}
     steps:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
