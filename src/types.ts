@@ -4,7 +4,7 @@ export type Decision = "allow" | "deny" | "ask";
 
 // ---- Secrets scanning (feature 24) ----
 
-export type SecretScannerName = "gitleaks" | "trufflehog" | "detect-secrets";
+export type SecretScannerName = "gitleaks" | "betterleaks" | "trufflehog" | "detect-secrets";
 
 export interface SecretsAllowConfig {
   paths: string[]; // path globs whose file inputs are exempt (e.g. ".env.example")

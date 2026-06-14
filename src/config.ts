@@ -75,7 +75,11 @@ export const DEFAULT_SECRETS_CONFIG: SecretsConfig = {
   outputTools: ["Read", "Bash", "Grep", "WebFetch"],
   allow: { paths: [], rules: [] },
   maxScanBytes: 1048576, // 1 MiB
-  timeoutMs: 3000,
+  // Generous because trufflehog's detector init runs several seconds; gitleaks
+  // (~100ms) and detect-secrets (~600ms) finish long before this. It is a hang
+  // ceiling, not a fixed wait. The PreToolUse hook's own 5s timeout is the real
+  // bound for input scanning, so slow scanners suit output scanning best.
+  timeoutMs: 10000,
 };
 
 export const DEFAULT_CONFIG: FencepostConfig = {
@@ -268,7 +272,7 @@ function parseInterpreters(raw: unknown, source: string): Record<string, Interpr
   return out;
 }
 
-const SECRET_SCANNER_NAMES = ["auto", "gitleaks", "trufflehog", "detect-secrets"] as const;
+const SECRET_SCANNER_NAMES = ["auto", "gitleaks", "betterleaks", "trufflehog", "detect-secrets"] as const;
 
 /** Parse a `secrets:` block. Unset fields stay undefined so merging is field-level. */
 function parseSecrets(raw: unknown, source: string): SecretsConfig | undefined {
@@ -281,7 +285,7 @@ function parseSecrets(raw: unknown, source: string): SecretsConfig | undefined {
     if ((SECRET_SCANNER_NAMES as readonly string[]).includes(String(o["scanner"]))) {
       out.scanner = o["scanner"] as SecretsConfig["scanner"];
     } else {
-      note("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|trufflehog|detect-secrets), ignoring`);
+      note("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|betterleaks|trufflehog|detect-secrets), ignoring`);
     }
   }
   if (typeof o["scanInputs"] === "boolean") out.scanInputs = o["scanInputs"];

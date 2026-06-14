@@ -57,7 +57,7 @@ async function runScan(
   secrets: SecretsConfig,
 ): Promise<SecretFinding[] | null> {
   try {
-    return await scanner.scan(content, secrets.timeoutMs ?? 3000);
+    return await scanner.scan(content, secrets.timeoutMs ?? 10000);
   } catch (err) {
     logger.warn({ err, scanner: scanner.name }, "secret scan could not run");
     return null;

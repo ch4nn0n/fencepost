@@ -4952,7 +4952,7 @@ var init_scanner = __esm(() => {
 import { mkdtemp, readFile as readFile3, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join as join4 } from "node:path";
-function parseGitleaksOutput(stdout) {
+function parseGitleaksOutput(stdout, scanner = "gitleaks") {
   const trimmed = stdout.trim();
   if (!trimmed)
     return [];
@@ -4964,7 +4964,7 @@ function parseGitleaksOutput(stdout) {
     if (typeof item !== "object" || item === null)
       continue;
     const finding = {
-      scanner: "gitleaks",
+      scanner,
       ruleId: String(item.RuleID ?? "unknown"),
       line: typeof item.StartLine === "number" ? item.StartLine : 0
     };
@@ -4974,35 +4974,49 @@ function parseGitleaksOutput(stdout) {
   }
   return findings;
 }
+async function scanWithGitleaksCli(bin, scanner, content, timeoutMs) {
+  const dir = await mkdtemp(join4(tmpdir(), "fencepost-scan-"));
+  try {
+    const report = join4(dir, "report.json");
+    const result = await runScanner(bin, ["stdin", "--no-banner", "--exit-code", "0", "-f", "json", "-r", report, "-l", "error"], content, timeoutMs);
+    if (result.exitCode !== 0) {
+      throw new ScanUnavailableError(bin, `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
+    }
+    let reportText;
+    try {
+      reportText = await readFile3(report, "utf8");
+    } catch {
+      return [];
+    }
+    try {
+      return parseGitleaksOutput(reportText, scanner);
+    } catch (err2) {
+      throw new ScanUnavailableError(bin, `unparseable report: ${err2.message}`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 class GitleaksScanner {
   name = "gitleaks";
-  async scan(content, timeoutMs) {
-    const dir = await mkdtemp(join4(tmpdir(), "fencepost-scan-"));
-    try {
-      const report = join4(dir, "report.json");
-      const result = await runScanner("gitleaks", ["stdin", "--no-banner", "--exit-code", "0", "-f", "json", "-r", report, "-l", "error"], content, timeoutMs);
-      if (result.exitCode !== 0) {
-        throw new ScanUnavailableError("gitleaks", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
-      }
-      let reportText;
-      try {
-        reportText = await readFile3(report, "utf8");
-      } catch {
-        return [];
-      }
-      try {
-        return parseGitleaksOutput(reportText);
-      } catch (err2) {
-        throw new ScanUnavailableError("gitleaks", `unparseable report: ${err2.message}`);
-      }
-    } finally {
-      await rm(dir, { recursive: true, force: true }).catch(() => {});
-    }
+  scan(content, timeoutMs) {
+    return scanWithGitleaksCli("gitleaks", "gitleaks", content, timeoutMs);
   }
 }
 var init_gitleaks = __esm(() => {
   init_scanner();
+});
+
+// src/secrets/betterleaks.ts
+class BetterleaksScanner {
+  name = "betterleaks";
+  scan(content, timeoutMs) {
+    return scanWithGitleaksCli("betterleaks", "betterleaks", content, timeoutMs);
+  }
+}
+var init_betterleaks = __esm(() => {
+  init_gitleaks();
 });
 
 // src/secrets/trufflehog.ts
@@ -5044,9 +5058,9 @@ class TrufflehogScanner {
     try {
       const file = join5(dir, "content");
       await writeFile(file, content, { mode: 384 });
-      const baseArgs = ["filesystem", file, "--json", "--no-verification", "--log-level=-1"];
+      const baseArgs = ["filesystem", file, "--json", "--no-verification"];
       let result = await runScanner("trufflehog", [...baseArgs, "--no-update"], null, timeoutMs);
-      if (result.exitCode !== 0 && /cannot be repeated/.test(result.stderr)) {
+      if (result.exitCode !== 0) {
         result = await runScanner("trufflehog", baseArgs, null, timeoutMs);
       }
       if (result.exitCode !== 0) {
@@ -5132,6 +5146,8 @@ function makeScanner(name2) {
   switch (name2) {
     case "gitleaks":
       return new GitleaksScanner;
+    case "betterleaks":
+      return new BetterleaksScanner;
     case "trufflehog":
       return new TrufflehogScanner;
     case "detect-secrets":
@@ -5150,9 +5166,10 @@ function findScanner(secrets) {
 var PREFERENCE;
 var init_detect = __esm(() => {
   init_gitleaks();
+  init_betterleaks();
   init_trufflehog();
   init_detect_secrets();
-  PREFERENCE = ["gitleaks", "trufflehog", "detect-secrets"];
+  PREFERENCE = ["gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
 });
 
 // src/secrets/redact.ts
@@ -5261,7 +5278,7 @@ function filterAllowedRules(findings, secrets) {
 }
 async function runScan(scanner, content, secrets) {
   try {
-    return await scanner.scan(content, secrets.timeoutMs ?? 3000);
+    return await scanner.scan(content, secrets.timeoutMs ?? 1e4);
   } catch (err2) {
     logger.warn({ err: err2, scanner: scanner.name }, "secret scan could not run");
     return null;
@@ -5453,6 +5470,8 @@ function makeScanner2(name2) {
   switch (name2) {
     case "gitleaks":
       return new GitleaksScanner;
+    case "betterleaks":
+      return new BetterleaksScanner;
     case "trufflehog":
       return new TrufflehogScanner;
     case "detect-secrets":
@@ -5471,9 +5490,10 @@ function findScanner2(secrets) {
 var PREFERENCE2;
 var init_detect2 = __esm(() => {
   init_gitleaks();
+  init_betterleaks();
   init_trufflehog();
   init_detect_secrets();
-  PREFERENCE2 = ["gitleaks", "trufflehog", "detect-secrets"];
+  PREFERENCE2 = ["gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
 });
 
 // src/config.ts
@@ -5664,7 +5684,7 @@ function parseSecrets2(raw, source) {
     if (SECRET_SCANNER_NAMES2.includes(String(o["scanner"]))) {
       out2.scanner = o["scanner"];
     } else {
-      note2("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|trufflehog|detect-secrets), ignoring`);
+      note2("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|betterleaks|trufflehog|detect-secrets), ignoring`);
     }
   }
   if (typeof o["scanInputs"] === "boolean")
@@ -6104,7 +6124,7 @@ var init_config = __esm(() => {
     outputTools: ["Read", "Bash", "Grep", "WebFetch"],
     allow: { paths: [], rules: [] },
     maxScanBytes: 1048576,
-    timeoutMs: 3000
+    timeoutMs: 1e4
   };
   DEFAULT_CONFIG2 = {
     default: "ask",
@@ -6114,7 +6134,7 @@ var init_config = __esm(() => {
     redirect: DEFAULT_REDIRECT_CONFIG2,
     secrets: DEFAULT_SECRETS_CONFIG2
   };
-  SECRET_SCANNER_NAMES2 = ["auto", "gitleaks", "trufflehog", "detect-secrets"];
+  SECRET_SCANNER_NAMES2 = ["auto", "gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
   PRESET_NAME_RE2 = /^[a-zA-Z0-9_-]+$/;
 });
 
@@ -6465,7 +6485,7 @@ var DEFAULT_SECRETS_CONFIG = {
   outputTools: ["Read", "Bash", "Grep", "WebFetch"],
   allow: { paths: [], rules: [] },
   maxScanBytes: 1048576,
-  timeoutMs: 3000
+  timeoutMs: 1e4
 };
 var DEFAULT_CONFIG = {
   default: "ask",
@@ -6647,7 +6667,7 @@ function parseInterpreters(raw, source) {
   }
   return out2;
 }
-var SECRET_SCANNER_NAMES = ["auto", "gitleaks", "trufflehog", "detect-secrets"];
+var SECRET_SCANNER_NAMES = ["auto", "gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
 function parseSecrets(raw, source) {
   if (typeof raw !== "object" || raw === null)
     return;
@@ -6659,7 +6679,7 @@ function parseSecrets(raw, source) {
     if (SECRET_SCANNER_NAMES.includes(String(o["scanner"]))) {
       out2.scanner = o["scanner"];
     } else {
-      note("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|trufflehog|detect-secrets), ignoring`);
+      note("warning", source, `secrets.scanner: unknown scanner ${JSON.stringify(o["scanner"])} (expected auto|gitleaks|betterleaks|trufflehog|detect-secrets), ignoring`);
     }
   }
   if (typeof o["scanInputs"] === "boolean")

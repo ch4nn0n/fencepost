@@ -3,13 +3,16 @@ import { join, delimiter } from "node:path";
 import type { SecretScannerName, SecretsConfig } from "../types.js";
 import type { SecretScanner } from "./scanner.js";
 import { GitleaksScanner } from "./gitleaks.js";
+import { BetterleaksScanner } from "./betterleaks.js";
 import { TrufflehogScanner } from "./trufflehog.js";
 import { DetectSecretsScanner } from "./detect-secrets.js";
 
-// Preference order: fastest and most precise first. gitleaks scans stdin in
-// ~200ms and reports raw secret spans; detect-secrets is slowest (Python
-// startup) and only reports line numbers.
-const PREFERENCE: SecretScannerName[] = ["gitleaks", "trufflehog", "detect-secrets"];
+// Preference order = recommendation order. gitleaks is the recommended default
+// (ubiquitous, mature, ~100ms, packaged everywhere), so auto picks it first;
+// betterleaks (its gitleaks-compatible successor) is the drop-in alternative.
+// Both report raw secret spans. trufflehog is slow; detect-secrets is slowest
+// (Python startup) and reports only line numbers. Pin `scanner:` to override.
+const PREFERENCE: SecretScannerName[] = ["gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
 
 /** True if `bin` resolves to an executable on PATH. */
 export function binaryOnPath(bin: string): boolean {
@@ -30,6 +33,8 @@ function makeScanner(name: SecretScannerName): SecretScanner {
   switch (name) {
     case "gitleaks":
       return new GitleaksScanner();
+    case "betterleaks":
+      return new BetterleaksScanner();
     case "trufflehog":
       return new TrufflehogScanner();
     case "detect-secrets":

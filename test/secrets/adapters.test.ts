@@ -29,6 +29,12 @@ describe("parseGitleaksOutput", () => {
   it("throws on non-JSON output", () => {
     expect(() => parseGitleaksOutput("not json")).toThrow();
   });
+
+  it("tags findings with the given scanner name (betterleaks reuses this parser)", async () => {
+    const out = parseGitleaksOutput(await readFile(join(FIXTURES, "gitleaks.json"), "utf8"), "betterleaks");
+    expect(out.length).toBe(3);
+    expect(out.every((f) => f.scanner === "betterleaks")).toBe(true);
+  });
 });
 
 describe("parseTrufflehogOutput", () => {

@@ -1,10 +1,18 @@
 import { describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { binaryOnPath } from "../../src/secrets/detect.js";
 import { GitleaksScanner } from "../../src/secrets/gitleaks.js";
+import { BetterleaksScanner } from "../../src/secrets/betterleaks.js";
 import { TrufflehogScanner } from "../../src/secrets/trufflehog.js";
 import { DetectSecretsScanner } from "../../src/secrets/detect-secrets.js";
 import { scanToolOutput } from "../../src/secrets/scan.js";
 import type { FencepostConfig } from "../../src/types.js";
+
+/** First line of a scanner's version output (for the CI matrix logs). */
+function versionOf(bin: string, args: string[]): string {
+  const r = spawnSync(bin, args, { encoding: "utf8" });
+  return `${r.stdout ?? ""}${r.stderr ?? ""}`.trim().split("\n")[0]?.trim() ?? "?";
+}
 
 // Real-binary round trips. Each block is skipped when the scanner is not on
 // PATH, so the suite passes on machines without them. Realistic fakes only:
@@ -33,6 +41,12 @@ const config: FencepostConfig = {
 };
 
 describe.skipIf(!binaryOnPath("gitleaks"))("gitleaks (real binary)", () => {
+  it("reports its version (for the CI compatibility matrix)", () => {
+    const v = versionOf("gitleaks", ["version"]);
+    console.log(`gitleaks version: ${v}`);
+    expect(v).not.toBe("?");
+  });
+
   it("finds and redacts a fake GitHub PAT end to end", async () => {
     const scanner = new GitleaksScanner();
     const findings = await scanner.scan(SAMPLE, TIMEOUT_MS);
@@ -50,7 +64,32 @@ describe.skipIf(!binaryOnPath("gitleaks"))("gitleaks (real binary)", () => {
   }, TIMEOUT_MS);
 });
 
+describe.skipIf(!binaryOnPath("betterleaks"))("betterleaks (real binary)", () => {
+  it("reports its version (for the CI compatibility matrix)", () => {
+    const v = versionOf("betterleaks", ["version"]);
+    console.log(`betterleaks version: ${v}`);
+    expect(v).not.toBe("?");
+  });
+
+  it("finds and redacts a fake GitHub PAT end to end", async () => {
+    const scanner = new BetterleaksScanner();
+    const findings = await scanner.scan(SAMPLE, TIMEOUT_MS);
+    expect(findings.some((f) => f.ruleId === "github-pat" && f.secret === FAKE_PAT)).toBe(true);
+
+    const r = await scanToolOutput("Read", { type: "text", text: SAMPLE }, config, scanner);
+    const updated = r?.updatedToolOutput as { text: string };
+    expect(updated.text).not.toContain(FAKE_PAT);
+    expect(updated.text).toContain("[FENCEPOST:REDACTED betterleaks:github-pat]");
+  }, TIMEOUT_MS);
+});
+
 describe.skipIf(!binaryOnPath("trufflehog"))("trufflehog (real binary)", () => {
+  it("reports its version (for the CI compatibility matrix)", () => {
+    const v = versionOf("trufflehog", ["--version"]);
+    console.log(`trufflehog version: ${v}`);
+    expect(v).not.toBe("?");
+  });
+
   it("finds the fake PAT via a temp file", async () => {
     const findings = await new TrufflehogScanner().scan(SAMPLE, TIMEOUT_MS);
     expect(findings.some((f) => f.ruleId === "Github" && f.secret === FAKE_PAT)).toBe(true);
@@ -58,6 +97,12 @@ describe.skipIf(!binaryOnPath("trufflehog"))("trufflehog (real binary)", () => {
 });
 
 describe.skipIf(!binaryOnPath("detect-secrets"))("detect-secrets (real binary)", () => {
+  it("reports its version (for the CI compatibility matrix)", () => {
+    const v = versionOf("detect-secrets", ["--version"]);
+    console.log(`detect-secrets version: ${v}`);
+    expect(v).not.toBe("?");
+  });
+
   it("reports the secret's line without raw text", async () => {
     const findings = await new DetectSecretsScanner().scan(SAMPLE, TIMEOUT_MS);
     expect(findings.length).toBeGreaterThan(0);
