@@ -42,11 +42,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Latest 4 stable GitHub releases (tag without leading v) + a floor.
+          # Latest 4 stable GitHub releases that actually ship the expected
+          # Linux asset (a tag can exist with no/incomplete assets), + a floor.
+          # Args: repo, asset-name-substring, floor.
           gh_latest() {
             gh api "repos/$1/releases" \
-              --jq '[.[] | select(.prerelease==false and .draft==false) | .tag_name | ltrimstr("v")] | .[0:4]' \
-              | jq -c --arg f "$2" 'if index($f) then . else . + [$f] end'
+              | jq -c --arg pat "$2" --arg f "$3" \
+                  '[.[] | select(.prerelease==false and .draft==false)
+                        | select(any(.assets[].name; contains($pat)))
+                        | (.tag_name | ltrimstr("v"))]
+                   | .[0:4] | (if index($f) then . else . + [$f] end)'
           }
           # Latest 4 stable PyPI releases + a floor.
           ds_latest() {
@@ -57,9 +62,9 @@ jobs:
           }
           # Assign first so `set -e` aborts on a failed API call instead of
           # silently emitting an empty matrix (which would skip the job).
-          gl=$(gh_latest gitleaks/gitleaks 8.19.3)
-          bl=$(gh_latest betterleaks/betterleaks 1.5.0)
-          th=$(gh_latest trufflesecurity/trufflehog 3.63.7)
+          gl=$(gh_latest gitleaks/gitleaks linux_x64.tar.gz 8.19.3)
+          bl=$(gh_latest betterleaks/betterleaks linux_x64.tar.gz 1.5.0)
+          th=$(gh_latest trufflesecurity/trufflehog linux_amd64.tar.gz 3.63.7)
           ds=$(ds_latest 1.4.0)
           for v in "$gl" "$bl" "$th" "$ds"; do
             case "$v" in \[*\]) ;; *) echo "version resolution failed: '$v'" >&2; exit 1 ;; esac
@@ -87,7 +92,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install gitleaks ${{ matrix.version }}
         run: |
-          curl -sSL -o gl.tar.gz \
+          curl -fsSL -o gl.tar.gz \
             "https://github.com/gitleaks/gitleaks/releases/download/v${{ matrix.version }}/gitleaks_${{ matrix.version }}_linux_x64.tar.gz"
           tar xzf gl.tar.gz gitleaks
           sudo install gitleaks /usr/local/bin/gitleaks
@@ -110,7 +115,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install betterleaks ${{ matrix.version }}
         run: |
-          curl -sSL -o bl.tar.gz \
+          curl -fsSL -o bl.tar.gz \
             "https://github.com/betterleaks/betterleaks/releases/download/v${{ matrix.version }}/betterleaks_${{ matrix.version }}_linux_x64.tar.gz"
           tar xzf bl.tar.gz betterleaks
           sudo install betterleaks /usr/local/bin/betterleaks
@@ -133,7 +138,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Install trufflehog ${{ matrix.version }}
         run: |
-          curl -sSL -o th.tar.gz \
+          curl -fsSL -o th.tar.gz \
             "https://github.com/trufflesecurity/trufflehog/releases/download/v${{ matrix.version }}/trufflehog_${{ matrix.version }}_linux_amd64.tar.gz"
           tar xzf th.tar.gz trufflehog
           sudo install trufflehog /usr/local/bin/trufflehog
