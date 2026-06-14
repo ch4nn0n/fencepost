@@ -23,7 +23,7 @@ A denial isn't a dead end: fencepost steers Claude toward the suggested alternat
 - **Curated, shareable rules.** Import battle-tested rule sets for `git`, `kubernetes`, `helm`, `ansible`, `filesystem` and more with one line.
 - **Real bash understanding.** Commands are parsed with tree-sitter, not pattern-matched — fencepost reasons about redirections, every argument, compound commands, and even inline `python -c` / `node -e` snippets.
 - **A scratch sandbox.** Funnel temp files into `/tmp/claude` and scope destructive permissions to it; the rest of the filesystem stays gated.
-- **Secrets protection.** Using whichever of gitleaks / trufflehog / detect-secrets you have installed, fencepost denies tool inputs that embed credentials and redacts secrets from tool output before they reach the model.
+- **Secrets protection.** Using whichever of gitleaks (recommended) / betterleaks / trufflehog / detect-secrets you have installed, fencepost denies tool inputs that embed credentials and redacts secrets from tool output before they reach the model.
 - **Fail-closed safety.** A broken security config denies everything until a human fixes it, rather than silently degrading.
 - **An audit trail.** Every decision is logged; the `/audit` skill turns real usage into concrete config suggestions.
 
