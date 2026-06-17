@@ -29,7 +29,13 @@ That's enough to be useful. `claude` allows routine file tools and turns on the 
 
 ## 2. Start a session
 
-Open Claude Code in the project. On `SessionStart`, fencepost injects a short [guidance](../configuration/guidance-and-chaining.md) message so Claude knows it's behind a gate, and creates `/tmp/claude`.
+Open Claude Code in the project, running it in `bypassPermissions` mode so fencepost is the sole gate (see [permission modes](../concepts/permission-modes.md) for why):
+
+```bash
+claude --permission-mode bypassPermissions
+```
+
+On `SessionStart`, fencepost injects a short [guidance](../configuration/guidance-and-chaining.md) message so Claude knows it's behind a gate, and creates `/tmp/claude`.
 
 Now watch the decisions:
 

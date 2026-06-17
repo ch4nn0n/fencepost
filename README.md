@@ -16,6 +16,8 @@ fencepost installs as a [Claude Code](https://docs.claude.com/en/docs/claude-cod
 
 A denial isn't a dead end: fencepost steers Claude toward the suggested alternative instead of letting it retry the same wall.
 
+fencepost is meant to **be** your permission layer. Run Claude Code in [`bypassPermissions` mode](https://ch4nn0n.github.io/fencepost/docs/concepts/permission-modes) and the YAML rule set becomes the single gate — Claude's native prompts step aside while fencepost's `allow`/`ask`/`deny` still decide every call.
+
 > 📖 **Full documentation: [ch4nn0n.github.io/fencepost](https://ch4nn0n.github.io/fencepost/)**
 
 ## Why
@@ -38,11 +40,17 @@ The repository doubles as a single-plugin marketplace:
 /plugin install fencepost@fencepost
 ```
 
-The hooks register and the gate is live on the next tool call. To try it against a clone without installing:
+The hooks register and the gate is live on the next tool call. Run Claude with fencepost as the sole gate:
+
+```bash
+claude --permission-mode bypassPermissions
+```
+
+This drops Claude's own prompts and lets your config decide. It also disables Claude's other safety nets, so use it in a container or VM and keep `default`/`onError` at `ask` or `deny` — see [permission modes](https://ch4nn0n.github.io/fencepost/docs/concepts/permission-modes). To try it against a clone without installing:
 
 ```bash
 git clone https://github.com/ch4nn0n/fencepost.git
-claude --plugin-dir ./fencepost
+claude --permission-mode bypassPermissions --plugin-dir ./fencepost
 ```
 
 See the [installation guide](https://ch4nn0n.github.io/fencepost/docs/getting-started/installation) for details.

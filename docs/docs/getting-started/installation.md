@@ -23,13 +23,27 @@ fencepost's repository doubles as a single-plugin marketplace, so you can add it
 
 That's it — the plugin is fetched and cached, the `PreToolUse` and `SessionStart` hooks register, and the gate is live on the next tool call. Update later with `/plugin marketplace update fencepost`.
 
+## Run Claude with fencepost as the gate (recommended)
+
+fencepost is meant to be your permission layer, so run Claude Code in `bypassPermissions` mode:
+
+```bash
+claude --permission-mode bypassPermissions
+```
+
+This stands down Claude's own permission prompts and lets fencepost's `allow`/`ask`/`deny` decide every call — no double-prompting, and your `fencepost.yaml` is the single source of truth. fencepost's `deny` and `ask` are still enforced in this mode; only the calls fencepost would let through stop prompting.
+
+:::warning Use an isolated environment
+`bypassPermissions` also disables Claude Code's *other* safety nets (protected-path write guards, and it offers no protection against prompt injection), so Claude recommends it only in containers, VMs, or dev containers. With those nets off, fencepost is your sole gate — keep `default`/`onError` set to `ask` or `deny` (never `allow`). See **[Permission modes](../concepts/permission-modes.md)** for the full picture.
+:::
+
 ## Try it locally without installing
 
-To test against a clone (for development, or before committing to installing), point Claude Code at the directory:
+To test against a clone (for development, or before committing to installing), point Claude Code at the directory (the same `--permission-mode` flag applies):
 
 ```bash
 git clone https://github.com/ch4nn0n/fencepost.git
-claude --plugin-dir ./fencepost
+claude --permission-mode bypassPermissions --plugin-dir ./fencepost
 ```
 
 ## What's in the plugin

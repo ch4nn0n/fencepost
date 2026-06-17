@@ -20,7 +20,7 @@ The goal is not just to block things. A bare denial leaves Claude to retry the s
 
 ## Why run it
 
-Claude Code already has a permission system. fencepost sits alongside it for the cases where you want **policy as code**:
+fencepost is designed to **be** your permission layer. Run Claude Code in [`bypassPermissions` mode](./concepts/permission-modes.md) and the YAML ruleset becomes the single source of truth: Claude's native prompts step aside, and fencepost's `allow`/`ask`/`deny` decide every call. This is the recommended way to run it — **policy as code** instead of prompt-by-prompt approvals:
 
 - **Curated, shareable rules.** Import a battle-tested ruleset for `git`, `kubernetes`, `helm`, `ansible` and more with a single line, instead of hand-writing allow-lists.
 - **Real bash understanding.** Commands are parsed with tree-sitter, not pattern-matched as strings. fencepost reasons about redirections, every argument, compound commands, and even inline `python -c`/`node -e` snippets.
@@ -48,6 +48,7 @@ fencepost ships as a small JS bundle (~280 KB plus the tree-sitter grammars) tha
 
 - **[Installation](./getting-started/installation.md)** — add the plugin and build the binary.
 - **[Quick start](./getting-started/quick-start.md)** — a working config in two minutes.
+- **[Permission modes](./concepts/permission-modes.md)** — why to run Claude in `bypassPermissions` so fencepost is the sole gate.
 - **[The decision model](./concepts/decision-model.md)** — how the tiers resolve.
 - **[Presets](./presets.md)** — the curated rule sets you can import.
 

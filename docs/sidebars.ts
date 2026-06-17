@@ -20,6 +20,7 @@ const sidebars: SidebarsConfig = {
         'concepts/decision-model',
         'concepts/evaluation',
         'concepts/failure-posture',
+        'concepts/permission-modes',
       ],
     },
     {
