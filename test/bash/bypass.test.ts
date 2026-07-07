@@ -62,3 +62,19 @@ describe("quoted/escaped command name cannot bypass rules", () => {
     expect((await evaluateBashAst('"python3" -c "import os"', c, CWD)).decision).toBe("deny");
   });
 });
+
+// Vuln 2: quoting a redirect target must not defeat path containment.
+describe("quoted redirect target cannot bypass containment", () => {
+  const c = cfg({
+    redirects: [{ mode: "write", outside: ["/tmp/claude", "."], decision: "deny" }],
+    allow: ["echo"],
+  });
+
+  it("denies write to a quoted absolute path outside the sandbox", async () => {
+    expect((await evaluateBashAst('echo pwned > "/etc/passwd"', c, CWD)).decision).toBe("deny");
+  });
+
+  it("still denies the unquoted form", async () => {
+    expect((await evaluateBashAst("echo pwned > /etc/passwd", c, CWD)).decision).toBe("deny");
+  });
+});

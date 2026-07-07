@@ -223,7 +223,9 @@ export async function extractBash(command: string): Promise<ExtractResult> {
       if (n.type === "file_redirect" || n.type === "heredoc_redirect") {
         const op = n.child(0)?.text ?? "";
         const dest = n.childForFieldName?.("destination");
-        const redirect: Redirect = { op, mode: redirectMode(op), target: dest ? dest.text : null };
+        // Unquote the target so a quoted absolute path (`> "/etc/passwd"`) cannot
+        // be misread as relative-to-cwd and slip past path-containment rules.
+        const redirect: Redirect = { op, mode: redirectMode(op), target: dest ? unquoteText(dest) : null };
         const owner = ownerOf(n, byId);
         if (owner) owner.redirects.push(redirect);
         else looseRedirects.push(redirect);

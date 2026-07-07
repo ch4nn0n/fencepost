@@ -11,7 +11,11 @@ import { homedir } from "node:os";
 
 /** Resolve a path token against cwd, expanding a leading ~ to home. */
 export function resolvePath(token: string, cwd: string): string {
-  let t = token;
+  // Defence in depth: strip stray shell quote/backslash characters so a quoted
+  // absolute path (e.g. `"/etc/passwd"`) can't be reinterpreted as relative and
+  // escape containment checks. Tokens reaching here are normally already
+  // unquoted, but never trust that for a security decision.
+  let t = token.replace(/['"`]/g, "").replace(/\\(.)/g, "$1");
   if (t === "~") t = homedir();
   else if (t.startsWith("~/")) t = homedir() + t.slice(1);
   return resolve(cwd, t);

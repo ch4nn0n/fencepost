@@ -4428,7 +4428,7 @@ async function extractBash(command) {
       if (n.type === "file_redirect" || n.type === "heredoc_redirect") {
         const op = n.child(0)?.text ?? "";
         const dest = n.childForFieldName?.("destination");
-        const redirect = { op, mode: redirectMode(op), target: dest ? dest.text : null };
+        const redirect = { op, mode: redirectMode(op), target: dest ? unquoteText(dest) : null };
         const owner = ownerOf(n, byId);
         if (owner)
           owner.redirects.push(redirect);
@@ -4484,7 +4484,7 @@ var init_ast = __esm(() => {
 import { resolve as resolve2 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 function resolvePath(token, cwd) {
-  let t = token;
+  let t = token.replace(/['"`]/g, "").replace(/\\(.)/g, "$1");
   if (t === "~")
     t = homedir2();
   else if (t.startsWith("~/"))
