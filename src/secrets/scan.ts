@@ -38,6 +38,12 @@ const INPUT_FIELDS_BY_TOOL: Record<string, string[]> = {
 
 const PATH_FIELDS = ["file_path", "notebook_path"] as const;
 
+// Default ceiling on how much content we hand a scanner. Raised from 1 MiB so
+// ordinary large reads/diffs are still scanned (gitleaks cost is ~flat with
+// size); on the OUTPUT path, content over this is withheld rather than passed
+// through unscanned (see scanToolOutput).
+const DEFAULT_MAX_SCAN_BYTES = 5_242_880; // 5 MiB
+
 function ruleAllowed(finding: SecretFinding, allowRules: string[]): boolean {
   const key = `${finding.scanner}:${finding.ruleId}`;
   return allowRules.some((pattern) => matchesGlob(key, pattern));
@@ -108,7 +114,7 @@ export async function scanToolInput(
     .filter((v): v is string => typeof v === "string")
     .join("\n");
   if (!content) return null;
-  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576)) return null;
+  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? DEFAULT_MAX_SCAN_BYTES)) return null;
 
   const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
   if (!scanner) {
@@ -131,7 +137,9 @@ export async function scanToolInput(
     decision: "deny",
     reason: `The ${input.tool_name} input contains what looks like a secret (${rules.join(", ")}). Secrets must not be written into files or commands.`,
     alternative:
-      "Reference the secret from its existing source (an environment variable, a secrets manager, or the file it already lives in) instead of embedding the value.",
+      "Reference the secret from its existing source (an environment variable, a secrets manager, or the file it already lives in) instead of embedding the value. " +
+      `If this is a false positive, the user can allowlist the rule under secrets.allow.rules (e.g. "${rules[0]}") ` +
+      "or exempt the target path under secrets.allow.paths in their fencepost config.",
     matchedRule: `secrets.${rules[0]}`,
     matchedInput: input.tool_name,
   };
@@ -142,10 +150,12 @@ export async function scanToolInput(
 export interface OutputScanResult {
   updatedToolOutput: unknown; // same shape as tool_response, strings redacted
   redactions: RedactionSummary[];
-  // Set when the pinned scanner was unavailable and the whole output was
-  // withheld (fail closed). `context` overrides the default redaction note.
+  // Set when the whole output was withheld (fail closed) because it could not be
+  // scanned. `context` overrides the default redaction note; `scanner` names the
+  // scanner involved (for the audit log) when one is known.
   withheld?: boolean;
   context?: string;
+  scanner?: string;
 }
 
 const MAX_WALK_DEPTH = 8;
@@ -199,22 +209,41 @@ function redactValue(value: unknown, walk: RedactWalk, depth = 0): unknown {
 }
 
 /**
- * Fail-closed output: the pinned scanner could not run, so the output cannot be
- * vouched safe. Replace the whole response with a text notice (the shape Claude
- * Code documents for updatedToolOutput) so no unscanned content reaches the
- * model — discarding the original content is the point.
+ * Fail-closed output: the content could not be scanned, so it cannot be vouched
+ * safe. Replace the whole response with a text notice (the shape Claude Code
+ * documents for updatedToolOutput) so no unscanned content reaches the model —
+ * discarding the original content is the point.
  */
-function withheldOutput(secrets: SecretsConfig): OutputScanResult {
-  const name = String(secrets.scanner);
-  const notice = `[Fencepost withheld this output: the configured secret scanner '${name}' could not run, so it could not be scanned for secrets. Failing closed.]`;
+function withheldResult(notice: string, context: string, scanner?: string): OutputScanResult {
   return {
-    updatedToolOutput: { type: "text", text: notice },
+    updatedToolOutput: { type: "text", text: `[${notice}]` },
     redactions: [],
     withheld: true,
-    context:
-      `Fencepost could not scan this tool output because the configured scanner '${name}' is unavailable, ` +
-      `so the output was withheld (fail closed). Tell the user to install '${name}' or set secrets.scanner to "auto".`,
+    context,
+    scanner,
   };
+}
+
+/** Withhold because the scanner could not run (unavailable, spawn error, or timeout). */
+function scannerUnavailableWithhold(scannerName: string): OutputScanResult {
+  return withheldResult(
+    `Fencepost withheld this output: the secret scanner '${scannerName}' could not run, so it could not be scanned for secrets. Failing closed.`,
+    `Fencepost withheld this tool output because the scanner '${scannerName}' could not run, so it could not ` +
+      `be checked for secrets — passing it through could leak an unscanned secret to the model. ` +
+      `Tell the user to check the '${scannerName}' install, or set secrets.scanner to "auto".`,
+    scannerName,
+  );
+}
+
+/** Withhold because the output is larger than the scan-size limit. */
+function oversizeWithhold(limit: number): OutputScanResult {
+  return withheldResult(
+    `Fencepost withheld this output: it is larger than the ${limit}-byte scan limit (secrets.maxScanBytes), so it could not be scanned for secrets. Failing closed.`,
+    `Fencepost withheld this tool output because it exceeds the secrets.maxScanBytes limit (${limit} bytes), so it ` +
+      `could not be checked for secrets. Ask the user to raise secrets.maxScanBytes if large outputs must pass, ` +
+      `or narrow the read/command so the output is smaller.`,
+    "oversize",
+  );
 }
 
 // scannerOverride: undefined = resolve from PATH; null = force "unavailable".
@@ -232,21 +261,27 @@ export async function scanToolOutput(
   collectStrings(toolResponse, pieces);
   const content = pieces.join("\n");
   if (!content) return null;
-  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576)) {
-    // A deliberate size policy, not scanner unavailability — fail open either
-    // way so a single huge output never wedges the session.
-    logger.warn({ toolName }, "tool output exceeds secrets.maxScanBytes, skipping scan");
-    return null;
+  const limit = secrets.maxScanBytes ?? DEFAULT_MAX_SCAN_BYTES;
+  if (Buffer.byteLength(content, "utf8") > limit) {
+    // Too large to scan: withhold rather than pass through unscanned, so an
+    // oversize output can't become a hole that leaks a secret to the model.
+    logger.warn({ toolName }, "tool output exceeds secrets.maxScanBytes, withholding");
+    return oversizeWithhold(limit);
   }
 
   const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
   if (!scanner) {
-    return isPinned(secrets) ? withheldOutput(secrets) : null;
+    // No scanner installed at all. Pinned: withhold. Auto: fail open — this is an
+    // onboarding state (session-start guidance warns), not a scan failure.
+    return isPinned(secrets) ? scannerUnavailableWithhold(String(secrets.scanner)) : null;
   }
 
   const findings = await runScan(scanner, content, secrets);
   if (!findings) {
-    return isPinned(secrets) ? withheldOutput(secrets) : null;
+    // A scanner IS present but the scan failed (spawn error/timeout). Withhold in
+    // BOTH auto and pinned: a present scanner that can't vouch for the output must
+    // not silently pass it to the model.
+    return scannerUnavailableWithhold(scanner.name);
   }
   const live = filterAllowedRules(findings, secrets);
   if (live.length === 0) return null;

@@ -172,7 +172,7 @@ async function runPostToolUse(): Promise<void> {
 
     // Audit the redaction/withhold (rule ids and counts only — never values).
     const scanner = scan.withheld
-      ? String(config.secrets.scanner)
+      ? (scan.scanner ?? String(config.secrets.scanner))
       : (scan.redactions[0]?.scanner ?? "unknown");
     const entry = buildAuditEntry({
       sessionId: input.session_id,

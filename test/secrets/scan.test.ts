@@ -167,24 +167,33 @@ describe("scanToolOutput", () => {
     expect(updated.stderr).toBe("[FENCEPOST:REDACTED gitleaks:keyword] (full line)");
   });
 
-  it("returns null for clean output, unmatched tools, and oversized output", async () => {
+  it("returns null for clean output and unmatched tools", async () => {
     expect(await scanToolOutput("Read", { type: "text", text: "clean" }, makeConfig(), fakeScanner())).toBeNull();
     expect(
       await scanToolOutput("Edit", { type: "text", text: FAKE_SECRET }, makeConfig(), fakeScanner()),
     ).toBeNull();
-    expect(
-      await scanToolOutput(
-        "Read",
-        { type: "text", text: FAKE_SECRET },
-        makeConfig({ maxScanBytes: 10 }),
-        fakeScanner(),
-      ),
-    ).toBeNull();
   });
 
-  it("fails open when the scanner is broken", async () => {
+  it("withholds oversized output rather than passing it through unscanned", async () => {
+    const r = await scanToolOutput(
+      "Read",
+      { type: "text", text: FAKE_SECRET },
+      makeConfig({ maxScanBytes: 10 }),
+      fakeScanner(),
+    );
+    expect(r?.withheld).toBe(true);
+    const updated = r?.updatedToolOutput as { type: string; text: string };
+    expect(updated.text).toContain("larger than");
+    expect(updated.text).not.toContain(FAKE_SECRET);
+  });
+
+  it("withholds output when a present scanner fails at runtime (auto)", async () => {
+    // A scanner IS present but the scan throws: the output can't be vouched safe,
+    // so it must be withheld even in auto mode (not passed through unscanned).
     const r = await scanToolOutput("Read", { type: "text", text: FAKE_SECRET }, makeConfig(), brokenScanner());
-    expect(r).toBeNull();
+    expect(r?.withheld).toBe(true);
+    const updated = r?.updatedToolOutput as { type: string; text: string };
+    expect(updated.text).not.toContain(FAKE_SECRET);
   });
 });
 
@@ -218,7 +227,7 @@ describe("fail-closed when a pinned scanner is unavailable", () => {
     expect(updated.type).toBe("text");
     expect(updated.text).toContain("withheld");
     expect(updated.text).not.toContain("totally clean output");
-    expect(r?.context).toContain("fail closed");
+    expect(r?.context).toContain("could not run");
   });
 
   it("withholds output when a pinned scanner errors at runtime", async () => {
@@ -231,14 +240,14 @@ describe("fail-closed when a pinned scanner is unavailable", () => {
     expect(r).toBeNull();
   });
 
-  it("does not withhold oversized output even when pinned (size policy, not availability)", async () => {
+  it("withholds oversized output (too large to scan, so cannot be vouched safe)", async () => {
     const r = await scanToolOutput(
       "Read",
       { type: "text", text: "x".repeat(100) },
       makeConfig({ scanner: "gitleaks", maxScanBytes: 10 }),
       null,
     );
-    expect(r).toBeNull();
+    expect(r?.withheld).toBe(true);
   });
 });
 

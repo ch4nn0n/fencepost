@@ -27,7 +27,7 @@ describe("secrets config", () => {
     expect(compiled.config.secrets?.scanner).toBe("auto");
     expect(compiled.config.secrets?.inputTools).toContain("Write");
     expect(compiled.config.secrets?.outputTools).toContain("Read");
-    expect(compiled.config.secrets?.maxScanBytes).toBe(1048576);
+    expect(compiled.config.secrets?.maxScanBytes).toBe(5242880);
     expect(compiled.config.secrets?.timeoutMs).toBe(10000);
   });
 

@@ -66,7 +66,7 @@ secrets:
       - "test/fixtures/**"
     rules:             # "<scanner>:<rule>" globs to ignore everywhere
       - "gitleaks:generic-api-key"
-  maxScanBytes: 1048576  # skip scanning content larger than this
+  maxScanBytes: 5242880  # 5 MiB; larger output is withheld (see failure posture)
   timeoutMs: 10000       # per scanner invocation; on timeout the scan is skipped
                          # (generous so trufflehog can finish; gitleaks/detect-secrets
                          # return in well under a second)
@@ -76,12 +76,18 @@ The `secrets` block merges **field by field**: a preset can set `enabled: true` 
 
 ## Failure posture
 
-The posture depends on whether you **pinned** a scanner:
+The output path (PostToolUse redaction) is the boundary that stops a secret from reaching the upstream model, so it fails **closed** whenever it cannot vouch for the output. The input path (PreToolUse) keeps the more onboarding-friendly `auto`/pinned split, because a `PreToolUse` hook can fall back to your `default`/rules rather than blocking outright.
 
-- **`scanner: auto` (default) fails open.** A missing scanner deactivates scanning, a scanner error/timeout lets the tool call proceed unscanned, and output larger than `maxScanBytes` is skipped. Onboarding is never blocked; session-start guidance warns when protection is inactive, with install hints.
-- **`scanner: <name>` fails closed.** Pinning a scanner is a deliberate choice, so if that scanner can't run (not installed, spawn error, or timeout) fencepost treats it as a misconfiguration: **inputs are denied** and **tool output is withheld** (replaced with a notice) until the scanner is installed or `scanner` is set back to `auto`. Session-start guidance says so loudly.
+**Output path (redaction):**
 
-In both modes, output larger than `maxScanBytes` is skipped rather than withheld — that limit is a deliberate size policy, not scanner unavailability, so a single huge output never wedges the session.
+- **A present scanner that fails to run is withheld — in both `auto` and pinned modes.** If a scanner is installed but the scan errors or times out, fencepost cannot confirm the output is clean, so the whole output is **withheld** (replaced with a notice) rather than passed through unscanned. This is the case where you *opted into* protection and a transient failure would otherwise silently leak.
+- **Output larger than `maxScanBytes` is withheld**, not skipped — an oversize output can't become a hole that leaks a secret. The default limit is **5 MiB** (raised so ordinary large reads/diffs are still scanned; gitleaks' cost is roughly flat with size). Raise `maxScanBytes` if you routinely need larger outputs to pass.
+- **No scanner installed at all stays fail-open in `auto`** (pinned withholds). This is an onboarding state, not a scan failure: session-start guidance warns loudly that protection is inactive, with install hints, but reads/commands keep returning real output so a fresh install is usable. Install a scanner (or pin one) to close this.
+
+**Input path (deny):**
+
+- **`scanner: auto` (default) fails open.** A missing scanner deactivates input scanning and a scanner error/timeout lets the tool call proceed unscanned; input larger than `maxScanBytes` is skipped. Onboarding is never blocked.
+- **`scanner: <name>` fails closed.** Pinning a scanner is a deliberate choice, so if that scanner can't run (not installed, spawn error, or timeout) fencepost treats it as a misconfiguration and **denies the input** until the scanner is installed or `scanner` is set back to `auto`.
 
 A *broken config*, as always, [fails closed](../concepts/failure-posture.md).
 

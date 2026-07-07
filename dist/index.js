@@ -5376,7 +5376,7 @@ async function scanToolInput(input, config, scannerOverride) {
 `);
   if (!content)
     return null;
-  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576))
+  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? DEFAULT_MAX_SCAN_BYTES))
     return null;
   const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
   if (!scanner) {
@@ -5393,7 +5393,7 @@ async function scanToolInput(input, config, scannerOverride) {
   return {
     decision: "deny",
     reason: `The ${input.tool_name} input contains what looks like a secret (${rules.join(", ")}). Secrets must not be written into files or commands.`,
-    alternative: "Reference the secret from its existing source (an environment variable, a secrets manager, or the file it already lives in) instead of embedding the value.",
+    alternative: "Reference the secret from its existing source (an environment variable, a secrets manager, or the file it already lives in) instead of embedding the value. " + `If this is a false positive, the user can allowlist the rule under secrets.allow.rules (e.g. "${rules[0]}") ` + "or exempt the target path under secrets.allow.paths in their fencepost config.",
     matchedRule: `secrets.${rules[0]}`,
     matchedInput: input.tool_name
   };
@@ -5438,15 +5438,20 @@ function redactValue(value, walk, depth = 0) {
   }
   return value;
 }
-function withheldOutput(secrets) {
-  const name2 = String(secrets.scanner);
-  const notice = `[Fencepost withheld this output: the configured secret scanner '${name2}' could not run, so it could not be scanned for secrets. Failing closed.]`;
+function withheldResult(notice, context, scanner) {
   return {
-    updatedToolOutput: { type: "text", text: notice },
+    updatedToolOutput: { type: "text", text: `[${notice}]` },
     redactions: [],
     withheld: true,
-    context: `Fencepost could not scan this tool output because the configured scanner '${name2}' is unavailable, ` + `so the output was withheld (fail closed). Tell the user to install '${name2}' or set secrets.scanner to "auto".`
+    context,
+    scanner
   };
+}
+function scannerUnavailableWithhold(scannerName) {
+  return withheldResult(`Fencepost withheld this output: the secret scanner '${scannerName}' could not run, so it could not be scanned for secrets. Failing closed.`, `Fencepost withheld this tool output because the scanner '${scannerName}' could not run, so it could not ` + `be checked for secrets — passing it through could leak an unscanned secret to the model. ` + `Tell the user to check the '${scannerName}' install, or set secrets.scanner to "auto".`, scannerName);
+}
+function oversizeWithhold(limit) {
+  return withheldResult(`Fencepost withheld this output: it is larger than the ${limit}-byte scan limit (secrets.maxScanBytes), so it could not be scanned for secrets. Failing closed.`, `Fencepost withheld this tool output because it exceeds the secrets.maxScanBytes limit (${limit} bytes), so it ` + `could not be checked for secrets. Ask the user to raise secrets.maxScanBytes if large outputs must pass, ` + `or narrow the read/command so the output is smaller.`, "oversize");
 }
 async function scanToolOutput(toolName, toolResponse, config, scannerOverride) {
   const secrets = config.secrets;
@@ -5460,17 +5465,18 @@ async function scanToolOutput(toolName, toolResponse, config, scannerOverride) {
 `);
   if (!content)
     return null;
-  if (Buffer.byteLength(content, "utf8") > (secrets.maxScanBytes ?? 1048576)) {
-    logger.warn({ toolName }, "tool output exceeds secrets.maxScanBytes, skipping scan");
-    return null;
+  const limit = secrets.maxScanBytes ?? DEFAULT_MAX_SCAN_BYTES;
+  if (Buffer.byteLength(content, "utf8") > limit) {
+    logger.warn({ toolName }, "tool output exceeds secrets.maxScanBytes, withholding");
+    return oversizeWithhold(limit);
   }
   const scanner = scannerOverride === undefined ? findScanner(secrets) : scannerOverride;
   if (!scanner) {
-    return isPinned(secrets) ? withheldOutput(secrets) : null;
+    return isPinned(secrets) ? scannerUnavailableWithhold(String(secrets.scanner)) : null;
   }
   const findings = await runScan(scanner, content, secrets);
   if (!findings) {
-    return isPinned(secrets) ? withheldOutput(secrets) : null;
+    return scannerUnavailableWithhold(scanner.name);
   }
   const live = filterAllowedRules(findings, secrets);
   if (live.length === 0)
@@ -5494,7 +5500,7 @@ function redactionContext(redactions) {
   const rules = redactions.map((r) => `${r.scanner}:${r.ruleId}`).join(", ");
   return `Fencepost redacted ${total} secret value(s) from this tool output (${rules}). ` + "The [FENCEPOST:REDACTED ...] placeholders are not recoverable; do not attempt to reconstruct, " + "re-read, or guess the original values. If the secret is needed, ask the user.";
 }
-var INPUT_FIELDS_BY_TOOL, PATH_FIELDS, MAX_WALK_DEPTH = 8;
+var INPUT_FIELDS_BY_TOOL, PATH_FIELDS, DEFAULT_MAX_SCAN_BYTES = 5242880, MAX_WALK_DEPTH = 8;
 var init_scan = __esm(() => {
   init_logger();
   init_path_match();
@@ -6186,7 +6192,7 @@ var init_config = __esm(() => {
     inputTools: ["Write", "Edit", "NotebookEdit", "Bash"],
     outputTools: ["Read", "Bash", "Grep", "WebFetch"],
     allow: { paths: [], rules: [] },
-    maxScanBytes: 1048576,
+    maxScanBytes: 5242880,
     timeoutMs: 1e4
   };
   DEFAULT_CONFIG2 = {
@@ -6547,7 +6553,7 @@ var DEFAULT_SECRETS_CONFIG = {
   inputTools: ["Write", "Edit", "NotebookEdit", "Bash"],
   outputTools: ["Read", "Bash", "Grep", "WebFetch"],
   allow: { paths: [], rules: [] },
-  maxScanBytes: 1048576,
+  maxScanBytes: 5242880,
   timeoutMs: 1e4
 };
 var DEFAULT_CONFIG = {
@@ -7605,7 +7611,7 @@ async function runPostToolUse() {
     const scan = await scanToolOutput2(input.tool_name, input.tool_response, config);
     if (!scan)
       process.exit(0);
-    const scanner = scan.withheld ? String(config.secrets.scanner) : scan.redactions[0]?.scanner ?? "unknown";
+    const scanner = scan.withheld ? scan.scanner ?? String(config.secrets.scanner) : scan.redactions[0]?.scanner ?? "unknown";
     const entry = buildAuditEntry({
       sessionId: input.session_id,
       toolUseId: input.tool_use_id,

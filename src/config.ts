@@ -74,7 +74,7 @@ export const DEFAULT_SECRETS_CONFIG: SecretsConfig = {
   inputTools: ["Write", "Edit", "NotebookEdit", "Bash"],
   outputTools: ["Read", "Bash", "Grep", "WebFetch"],
   allow: { paths: [], rules: [] },
-  maxScanBytes: 1048576, // 1 MiB
+  maxScanBytes: 5242880, // 5 MiB
   // Generous because trufflehog's detector init runs several seconds; gitleaks
   // (~100ms) and detect-secrets (~600ms) finish long before this. It is a hang
   // ceiling, not a fixed wait. The PreToolUse hook's own 5s timeout is the real
