@@ -6,25 +6,43 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+function __accessProp(key) {
+  return this[key];
+}
+var __toESMCache_node;
+var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
+  var canCache = mod != null && typeof mod === "object";
+  if (canCache) {
+    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
+    var cached = cache.get(mod);
+    if (cached)
+      return cached;
+  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: () => mod[key],
+        get: __accessProp.bind(mod, key),
         enumerable: true
       });
+  if (canCache)
+    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
+var __returnValue = (v) => v;
+function __exportSetter(name2, newValue) {
+  this[name2] = __returnValue.bind(null, newValue);
+}
 var __export = (target, all) => {
   for (var name2 in all)
     __defProp(target, name2, {
       get: all[name2],
       enumerable: true,
       configurable: true,
-      set: (newValue) => all[name2] = () => newValue
+      set: __exportSetter.bind(all, name2)
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
@@ -4301,22 +4319,40 @@ function redirectMode(op) {
     return "write";
   return "read";
 }
-function argText(node) {
-  if (node.type === "string") {
-    let s = "";
-    for (let i3 = 0;i3 < node.namedChildCount; i3++) {
-      const c = node.namedChild(i3);
-      if (c.type === "string_content")
-        s += c.text;
+function unquoteText(node) {
+  switch (node.type) {
+    case "string": {
+      let s = "";
+      let sawContent = false;
+      for (let i3 = 0;i3 < node.namedChildCount; i3++) {
+        const c = node.namedChild(i3);
+        if (c.type === "string_content") {
+          s += c.text.replace(/\\(["`$\\])/g, "$1");
+          sawContent = true;
+        } else {
+          s += unquoteText(c);
+        }
+      }
+      return sawContent ? s : node.text.replace(/^\$?"|"$/g, "");
     }
-    return s || node.text.replace(/^"|"$/g, "");
+    case "raw_string":
+      return node.text.replace(/^\$?'|'$/g, "");
+    case "ansi_c_string":
+      return node.text.replace(/^\$'|'$/g, "");
+    case "command_name":
+    case "concatenation": {
+      let s = "";
+      for (let i3 = 0;i3 < node.namedChildCount; i3++)
+        s += unquoteText(node.namedChild(i3));
+      return s;
+    }
+    default:
+      return node.text.replace(/\\(.)/g, "$1");
   }
-  if (node.type === "raw_string")
-    return node.text.replace(/^'|'$/g, "");
-  return node.text;
 }
 function buildCommand(node) {
   const nameNode = node.childForFieldName("name");
+  const name2 = nameNode ? unquoteText(nameNode) : null;
   const args2 = [];
   for (let i3 = 0;i3 < node.namedChildCount; i3++) {
     const c = node.namedChild(i3);
@@ -4324,9 +4360,10 @@ function buildCommand(node) {
       continue;
     if (c.type === "variable_assignment")
       continue;
-    args2.push(argText(c));
+    args2.push(unquoteText(c));
   }
-  return { text: node.text, name: nameNode ? nameNode.text : null, args: args2, redirects: [], heredoc: null };
+  const text = [name2, ...args2].filter((p) => p != null && p !== "").join(" ");
+  return { text, name: name2, args: args2, redirects: [], heredoc: null };
 }
 function ownerOf(redirectNode, byId) {
   let n = redirectNode.parent;

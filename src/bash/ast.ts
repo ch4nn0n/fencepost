@@ -21,8 +21,8 @@ export interface Redirect {
 }
 
 export interface ExtractedCommand {
-  text: string; // full simple-command text (raw, with quotes)
-  name: string | null; // "rm", "git", "python3" ...
+  text: string; // full simple-command text, canonicalised (quotes/escapes removed) for matching
+  name: string | null; // "rm", "git", "python3" ... (unquoted)
   args: string[]; // arguments without the name; string literals unquoted
   redirects: Redirect[];
   heredoc: string | null; // heredoc body bound to this command, if any
@@ -87,31 +87,67 @@ function redirectMode(op: string): Redirect["mode"] {
   return "read";
 }
 
-/** Unquoted text of an argument node (string/raw_string -> content). */
-function argText(node: TsNode): string {
-  if (node.type === "string") {
-    let s = "";
-    for (let i = 0; i < node.namedChildCount; i++) {
-      const c = node.namedChild(i);
-      if (c.type === "string_content") s += c.text;
+/**
+ * Canonical (unquoted, unescaped) text of a token node.
+ *
+ * Security-critical: rules are matched against this, never against the raw
+ * `node.text`. Because the shell strips quotes and backslashes before execution,
+ * `"git"`, `\git`, `g\it` and `g"i"t` all run `git`; matching the raw text would
+ * let any of those slip past a rule that targets `git`. We mirror the shell's own
+ * unquoting so the string we check is the string that runs.
+ */
+export function unquoteText(node: TsNode): string {
+  switch (node.type) {
+    case "string": {
+      let s = "";
+      let sawContent = false;
+      for (let i = 0; i < node.namedChildCount; i++) {
+        const c = node.namedChild(i);
+        if (c.type === "string_content") {
+          // Inside double quotes bash keeps escapes literal in the token text;
+          // resolve the ones it honours (\" \\ \$ \`) so one layer of nesting
+          // unwinds per parse. Other backslashes stay verbatim, as bash leaves them.
+          s += c.text.replace(/\\(["`$\\])/g, "$1");
+          sawContent = true;
+        } else {
+          s += unquoteText(c); // nested expansion / substitution
+        }
+      }
+      // Fall back to stripping the delimiters if there was no string_content.
+      return sawContent ? s : node.text.replace(/^\$?"|"$/g, "");
     }
-    // Fall back to stripping the delimiters if there was no string_content.
-    return s || node.text.replace(/^"|"$/g, "");
+    case "raw_string":
+      return node.text.replace(/^\$?'|'$/g, "");
+    case "ansi_c_string":
+      return node.text.replace(/^\$'|'$/g, "");
+    case "command_name":
+    case "concatenation": {
+      // `command_name` wraps the real token(s); concatenation joins adjacent
+      // ones (e.g. g"i"t). Recurse into the children either way.
+      let s = "";
+      for (let i = 0; i < node.namedChildCount; i++) s += unquoteText(node.namedChild(i));
+      return s;
+    }
+    default:
+      // Bare word (or anything else): drop shell backslash escapes (\x -> x).
+      return node.text.replace(/\\(.)/g, "$1");
   }
-  if (node.type === "raw_string") return node.text.replace(/^'|'$/g, "");
-  return node.text;
 }
 
 function buildCommand(node: TsNode): ExtractedCommand {
   const nameNode = node.childForFieldName("name");
+  const name = nameNode ? unquoteText(nameNode) : null;
   const args: string[] = [];
   for (let i = 0; i < node.namedChildCount; i++) {
     const c = node.namedChild(i);
     if (nameNode && c.id === nameNode.id) continue;
     if (c.type === "variable_assignment") continue; // env prefix: FOO=bar cmd
-    args.push(argText(c));
+    args.push(unquoteText(c));
   }
-  return { text: node.text, name: nameNode ? nameNode.text : null, args, redirects: [], heredoc: null };
+  // Match against the canonical command (unquoted name + args), never node.text,
+  // so quoting/escaping a token cannot evade a prefix, regex, or argument rule.
+  const text = [name, ...args].filter((p): p is string => p != null && p !== "").join(" ");
+  return { text, name, args, redirects: [], heredoc: null };
 }
 
 const CONTROL_NODES = new Set([
