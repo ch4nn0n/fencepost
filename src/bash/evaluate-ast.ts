@@ -22,6 +22,27 @@ function mostRestrictive(results: EvalResult[]): EvalResult {
   return results.reduce((best, curr) => (rank[curr.decision] > rank[best.decision] ? curr : best));
 }
 
+const SHELL_WRAPPERS = new Set(["sh", "bash", "dash", "zsh", "ash", "ksh"]);
+const MAX_WRAPPER_DEPTH = 8;
+
+/**
+ * If a command hands a script string to a shell wrapper (`sh -c CODE`,
+ * `bash -c CODE`) or to `eval`, return that inner code so it can be re-parsed and
+ * evaluated. Otherwise the inner command would ride through as an inert argument,
+ * evading every prefix/argument/redirect rule.
+ */
+function shellWrapperCode(cmd: ExtractedCommand): string | null {
+  if (cmd.name === "eval") {
+    const code = cmd.args.join(" ").trim();
+    return code || null;
+  }
+  if (cmd.name && SHELL_WRAPPERS.has(cmd.name)) {
+    const i = cmd.args.indexOf("-c");
+    if (i !== -1 && i + 1 < cmd.args.length) return cmd.args[i + 1] || null;
+  }
+  return null;
+}
+
 function safeTest(pattern: string, text: string): boolean {
   try {
     return new RegExp(pattern).test(text);
@@ -130,7 +151,17 @@ export async function evaluateBashAst(
   rawCommand: string,
   config: FencepostConfig,
   cwd: string,
+  depth = 0,
 ): Promise<EvalResult> {
+  if (depth > MAX_WRAPPER_DEPTH) {
+    const onError = config.onError ?? "ask";
+    logger.warn({ rawCommand, depth }, "shell-wrapper nesting too deep, applying onError posture");
+    return {
+      decision: onError,
+      reason: "Command nests shells too deeply to analyse safely.",
+      matchedInput: rawCommand,
+    };
+  }
   const res = await extractBash(rawCommand);
   if (!res.ok) {
     const onError = config.onError ?? "ask";
@@ -149,6 +180,11 @@ export async function evaluateBashAst(
   for (const cmd of res.commands) {
     const nested = await analyseInterpreter(cmd, config, cwd);
     results.push(evaluateCommand(cmd, config, cwd, nested));
+    // Re-parse and evaluate any shell body carried by `sh -c` / `bash -c` / `eval`
+    // so its inner commands face the full rule set instead of riding through as a
+    // string argument.
+    const inner = shellWrapperCode(cmd);
+    if (inner) results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
   }
   const loose = evaluateLooseRedirects(res.looseRedirects, config, cwd);
   if (loose) results.push(loose);

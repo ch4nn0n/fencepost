@@ -78,3 +78,27 @@ describe("quoted redirect target cannot bypass containment", () => {
     expect((await evaluateBashAst("echo pwned > /etc/passwd", c, CWD)).decision).toBe("deny");
   });
 });
+
+// Vuln 3: shell wrappers must not smuggle inner commands past the rule set.
+describe("shell wrappers are analysed", () => {
+  const c = cfg({ deny: ["git clean -xfd"], allow: ["bash", "sh", "eval"] });
+
+  it("denies git clean wrapped in bash -c", async () => {
+    expect((await evaluateBashAst('bash -c "git clean -xfd"', c, CWD)).decision).toBe("deny");
+  });
+
+  it("denies git clean wrapped in sh -c", async () => {
+    expect((await evaluateBashAst('sh -c "git clean -xfd"', c, CWD)).decision).toBe("deny");
+  });
+
+  it("denies git clean wrapped in eval", async () => {
+    expect((await evaluateBashAst('eval "git clean -xfd"', c, CWD)).decision).toBe("deny");
+  });
+
+  it("fails closed on absurdly deep shell nesting", async () => {
+    let cmd = "git clean -xfd";
+    for (let i = 0; i < 10; i++) cmd = `bash -c ${JSON.stringify(cmd)}`;
+    const r = await evaluateBashAst(cmd, cfg({ deny: ["git clean -xfd"] }, { onError: "deny" }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+});

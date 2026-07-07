@@ -4803,6 +4803,18 @@ function mostRestrictive(results) {
   const rank = { deny: 3, ask: 2, allow: 1 };
   return results.reduce((best, curr) => rank[curr.decision] > rank[best.decision] ? curr : best);
 }
+function shellWrapperCode(cmd) {
+  if (cmd.name === "eval") {
+    const code = cmd.args.join(" ").trim();
+    return code || null;
+  }
+  if (cmd.name && SHELL_WRAPPERS.has(cmd.name)) {
+    const i3 = cmd.args.indexOf("-c");
+    if (i3 !== -1 && i3 + 1 < cmd.args.length)
+      return cmd.args[i3 + 1] || null;
+  }
+  return null;
+}
 function safeTest(pattern, text) {
   try {
     return new RegExp(pattern).test(text);
@@ -4890,7 +4902,16 @@ function evaluateLooseRedirects(looseRedirects, config, cwd) {
   }
   return null;
 }
-async function evaluateBashAst(rawCommand, config, cwd) {
+async function evaluateBashAst(rawCommand, config, cwd, depth = 0) {
+  if (depth > MAX_WRAPPER_DEPTH) {
+    const onError = config.onError ?? "ask";
+    logger.warn({ rawCommand, depth }, "shell-wrapper nesting too deep, applying onError posture");
+    return {
+      decision: onError,
+      reason: "Command nests shells too deeply to analyse safely.",
+      matchedInput: rawCommand
+    };
+  }
   const res = await extractBash(rawCommand);
   if (!res.ok) {
     const onError = config.onError ?? "ask";
@@ -4906,6 +4927,9 @@ async function evaluateBashAst(rawCommand, config, cwd) {
   for (const cmd of res.commands) {
     const nested = await analyseInterpreter(cmd, config, cwd);
     results.push(evaluateCommand(cmd, config, cwd, nested));
+    const inner = shellWrapperCode(cmd);
+    if (inner)
+      results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
   }
   const loose = evaluateLooseRedirects(res.looseRedirects, config, cwd);
   if (loose)
@@ -4929,12 +4953,14 @@ async function evaluateBashAst(rawCommand, config, cwd) {
   logger.info({ command: rawCommand, decision: winner.decision, rule: winner.matchedRule }, "decision");
   return winner;
 }
+var SHELL_WRAPPERS, MAX_WRAPPER_DEPTH = 8;
 var init_evaluate_ast = __esm(() => {
   init_ast();
   init_ast_interp();
   init_rules();
   init_normalise();
   init_logger();
+  SHELL_WRAPPERS = new Set(["sh", "bash", "dash", "zsh", "ash", "ksh"]);
 });
 
 // src/secrets/scanner.ts
