@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/ch4nn0n/fencepost/compare/v0.1.1...v0.2.0) (2026-07-08)
+
+
+### Features
+
+* add config JSON schema and docs reference ([7a2ecb7](https://github.com/ch4nn0n/fencepost/commit/7a2ecb7420857fccf93381b1a6dcf845133cc385))
+
+
+### Bug Fixes
+
+* **plugin:** use ${CLAUDE_PLUGIN_ROOT} for hook and CLI paths ([bcc8e77](https://github.com/ch4nn0n/fencepost/commit/bcc8e770656886dcba830f695180a9049af6c659))
+
 ## [0.1.1](https://github.com/ch4nn0n/fencepost/compare/v0.1.0...v0.1.1) (2026-07-08)
 
 
