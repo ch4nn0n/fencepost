@@ -42,10 +42,5 @@
         ]
       }
     ]
-  },
-  "skills": [
-    "skills/audit.md",
-    "skills/preset.md",
-    "skills/contribute-preset.md"
-  ]
+  }
 }
