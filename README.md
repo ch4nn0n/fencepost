@@ -94,7 +94,7 @@ bun run build        # bundle src/ → dist/index.js (+ wasm grammars)
 bun run dev          # run the entry point directly
 ```
 
-`dist/` is generated and not committed: `main` is source-only. On each release, the release workflow builds the bundle and publishes it to the [`dist` branch](https://github.com/ch4nn0n/fencepost/tree/dist), which is what plugin installs clone.
+`dist/` is generated and not committed: `main` is source-only. On each release, the release workflow builds the bundle and publishes it to the [`dist` branch](https://github.com/ch4nn0n/fencepost/tree/dist) (latest, what plugin installs clone) and an immutable `dist-vX.Y.Z` tag per release for version pinning.
 
 The documentation site lives in [`docs/`](./docs) (Docusaurus):
 

@@ -1,12 +1,15 @@
 name: Docs
 
+# The site deploys per release (called from the release workflow with the tag,
+# after publish verification), so published docs always describe an installable
+# version. workflow_dispatch remains for out-of-band fixes.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'presets/**'
-      - '.github/workflows/docs.yml'
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build the site from (defaults to the calling ref)
+        required: false
+        type: string
   workflow_dispatch:
 
 # Allow the GITHUB_TOKEN to deploy to GitHub Pages.
@@ -15,11 +18,6 @@ permissions:
   pages: write
   id-token: write
 
-# Allow one concurrent deployment; don't cancel an in-progress run.
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   build:
     name: Build site
@@ -27,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0 # full history so "last updated" dates resolve
 
       - name: Setup Bun
@@ -51,6 +50,13 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+    # Allow one concurrent deployment; don't cancel an in-progress run.
+    # Job-level (not workflow-level) for two reasons: workflow_call ignores the
+    # caller-independent top-level group, and a top-level group with the same
+    # name would deadlock this job against its own run.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

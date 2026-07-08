@@ -56,7 +56,7 @@ bun install
 bun start
 ```
 
-Merges to `main` that touch `docs/**` auto-deploy to GitHub Pages.
+The docs site deploys to GitHub Pages on each release (built from the release tag, after publish verification), or via a manual run of the Docs workflow for out-of-band fixes.
 
 ## License
 
