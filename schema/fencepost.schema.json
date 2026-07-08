@@ -1,0 +1,349 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ch4nn0n.github.io/fencepost/fencepost.schema.json",
+  "title": "fencepost configuration",
+  "description": "Schema for fencepost config files (.claude/fencepost.yaml, .claude/fencepost/config/*.yaml) and bundled presets.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "description": "Preset metadata used to render the docs catalog. Ignored at evaluation time; only bundled presets need it.",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string", "description": "Human-readable preset title." },
+        "description": { "type": "string", "description": "One-paragraph summary shown in the preset catalog." }
+      },
+      "required": ["title", "description"]
+    },
+    "import": {
+      "type": "array",
+      "description": "Bundled preset names to merge in as a base layer, in order. Your own config is applied on top. Names are bare identifiers, never paths.",
+      "items": { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" }
+    },
+    "default": {
+      "$ref": "#/definitions/decision",
+      "description": "Fallthrough decision when no rule matches. Defaults to ask.",
+      "default": "ask"
+    },
+    "onError": {
+      "$ref": "#/definitions/decision",
+      "description": "Posture when fencepost runs but cannot reach a decision (e.g. an unparseable Bash command). Defaults to ask; headless/CI setups may prefer allow. A broken config always fails closed (deny) regardless of this setting.",
+      "default": "ask"
+    },
+    "tools": {
+      "type": "object",
+      "description": "Rules over tool calls. Non-Bash tools match by name glob; Bash commands go through the bash pipeline.",
+      "additionalProperties": false,
+      "properties": {
+        "deny": {
+          "type": "array",
+          "description": "Tool-name globs to deny, each with an explanation shown to the model.",
+          "items": { "$ref": "#/definitions/toolDenyRule" }
+        },
+        "ask": {
+          "type": "array",
+          "description": "Tool-name globs that require user approval.",
+          "items": { "type": "string" }
+        },
+        "allow": {
+          "type": "array",
+          "description": "Tool-name globs to allow without prompting. Listing Bash here has no effect; Bash is always evaluated by the bash pipeline.",
+          "items": { "type": "string" }
+        },
+        "bash": { "$ref": "#/definitions/bashConfig" }
+      }
+    },
+    "guidance": {
+      "type": "object",
+      "description": "SessionStart guidance injected into Claude's context. Block-level last-wins on merge.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Emit SessionStart context at all.", "default": true },
+        "includeDefaults": { "type": "boolean", "description": "Include fencepost's built-in guidance lines.", "default": true },
+        "extra": { "type": "array", "description": "Additional guidance lines appended after the defaults.", "items": { "type": "string" } }
+      }
+    },
+    "redirect": {
+      "type": "object",
+      "description": "Tool-input redirection. Block-level last-wins on merge. Off by default; the claude preset turns it on.",
+      "additionalProperties": false,
+      "properties": {
+        "tmp": { "type": "boolean", "description": "Rewrite bare/prefixed /tmp paths in tool inputs to tmpTarget.", "default": false },
+        "tmpTarget": { "type": "string", "description": "Destination directory for redirected /tmp paths.", "default": "/tmp/claude" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "description": "Secrets scanning: deny inputs that contain credentials, redact secrets from tool outputs. Merged field-by-field; allowlists concatenate. Off by default; the secrets preset turns it on.",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Enable secrets scanning.", "default": false },
+        "scanner": {
+          "description": "Which scanner to use. auto probes PATH in preference order; a name pins one scanner.",
+          "enum": ["auto", "gitleaks", "betterleaks", "trufflehog", "detect-secrets"],
+          "default": "auto"
+        },
+        "scanInputs": { "type": "boolean", "description": "PreToolUse: deny tool inputs that contain secrets.", "default": true },
+        "scanOutputs": { "type": "boolean", "description": "PostToolUse: redact secrets from tool output before it reaches the model.", "default": true },
+        "inputTools": {
+          "type": "array",
+          "description": "Tools whose inputs are scanned.",
+          "items": { "type": "string" },
+          "default": ["Write", "Edit", "NotebookEdit", "Bash"]
+        },
+        "outputTools": {
+          "type": "array",
+          "description": "Tools whose outputs are scanned.",
+          "items": { "type": "string" },
+          "default": ["Read", "Bash", "Grep", "WebFetch"]
+        },
+        "allow": {
+          "type": "object",
+          "description": "Exemptions from scanning. Lists concatenate across config layers.",
+          "additionalProperties": false,
+          "properties": {
+            "paths": {
+              "type": "array",
+              "description": "Path globs whose file inputs are exempt (e.g. .env.example).",
+              "items": { "type": "string" }
+            },
+            "rules": {
+              "type": "array",
+              "description": "\"<scanner>:<ruleId>\" globs to ignore (e.g. gitleaks:generic-api-key).",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "maxScanBytes": {
+          "type": "number",
+          "description": "Content larger than this is not scanned at all.",
+          "exclusiveMinimum": 0,
+          "default": 5242880
+        },
+        "timeoutMs": {
+          "type": "number",
+          "description": "Hang ceiling per scanner invocation, in milliseconds.",
+          "exclusiveMinimum": 0,
+          "default": 10000
+        }
+      }
+    }
+  },
+  "definitions": {
+    "decision": {
+      "description": "What fencepost tells Claude Code: allow (proceed), deny (block with an explanation), or ask (prompt the user).",
+      "enum": ["allow", "deny", "ask"]
+    },
+    "toolDenyRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string", "description": "Tool-name glob, e.g. mcp__dangerous_*." },
+        "description": { "type": "string", "description": "Why this tool is denied; shown to the model." },
+        "alternative": { "type": "string", "description": "What to do instead; shown to the model." }
+      },
+      "required": ["tool", "description"]
+    },
+    "bashConfig": {
+      "type": "object",
+      "description": "Rules over Bash commands, evaluated on the parsed (tree-sitter) command.",
+      "additionalProperties": false,
+      "properties": {
+        "normalise": {
+          "type": "array",
+          "description": "Strip noise (e.g. -n <ns>) from commands with a given prefix before matching.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "prefix": { "type": "string", "description": "Command prefix this rule applies to, e.g. kubectl." },
+              "strip": { "type": "array", "description": "Regex patterns removed from the command before rule matching.", "items": { "type": "string", "format": "regex" } }
+            },
+            "required": ["prefix", "strip"]
+          }
+        },
+        "deny": {
+          "type": "array",
+          "description": "Command prefixes to deny, e.g. \"git push --force\".",
+          "items": { "type": "string" }
+        },
+        "checks": {
+          "type": "array",
+          "description": "Regex smart-deny rules matched against the whole normalised command.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "test": { "type": "string", "description": "Regex tested against the normalised command.", "format": "regex" },
+              "description": { "type": "string", "description": "Why the command is denied; shown to the model." },
+              "alternative": { "type": "string", "description": "What to do instead; shown to the model." }
+            },
+            "required": ["test", "description"]
+          }
+        },
+        "allowChecks": {
+          "type": "array",
+          "description": "Regex smart-allow rules matched against the whole normalised command (unlike the prefix allow list). Evaluated above ask/allow.",
+          "items": { "type": "string", "format": "regex" }
+        },
+        "ask": {
+          "type": "array",
+          "description": "Command prefixes that require user approval.",
+          "items": { "type": "string" }
+        },
+        "allow": {
+          "type": "array",
+          "description": "Command prefixes to allow without prompting.",
+          "items": { "type": "string" }
+        },
+        "discourageChaining": {
+          "type": "boolean",
+          "description": "Deny &&/;/|| chains that would need approval, with guidance to run the parts separately. Pipes are exempt.",
+          "default": true
+        },
+        "offerManualRun": {
+          "type": "boolean",
+          "description": "On deny, also offer the verbatim command for the user to run via ! <command>.",
+          "default": true
+        },
+        "redirects": {
+          "type": "array",
+          "description": "Structured rules over redirection targets (>, >>, <).",
+          "items": { "$ref": "#/definitions/redirectRule" }
+        },
+        "arguments": {
+          "type": "array",
+          "description": "Structured rules over a command's arguments (reason about every arg, not a prefix).",
+          "items": { "$ref": "#/definitions/argumentRule" }
+        },
+        "interpreters": {
+          "type": "object",
+          "description": "Rules over inline interpreter code (python -c, node -e, heredocs), keyed by language.",
+          "additionalProperties": false,
+          "properties": {
+            "python": { "$ref": "#/definitions/interpreterConfig" },
+            "javascript": { "$ref": "#/definitions/interpreterConfig" }
+          }
+        }
+      }
+    },
+    "redirectRule": {
+      "type": "object",
+      "description": "Fires on a redirection target. Provide exactly one of outside/glob.",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "Which redirections the rule applies to.",
+          "enum": ["read", "write", "append", "any"]
+        },
+        "outside": {
+          "type": "array",
+          "description": "Fires if the target is outside ALL of these roots.",
+          "items": { "type": "string" }
+        },
+        "glob": { "type": "string", "description": "Fires if the target matches this path glob." },
+        "decision": { "$ref": "#/definitions/decision" },
+        "description": { "type": "string", "description": "Shown to the model when the rule fires." },
+        "alternative": { "type": "string", "description": "What to do instead; shown to the model." }
+      },
+      "required": ["mode", "decision"],
+      "oneOf": [{ "required": ["outside"] }, { "required": ["glob"] }]
+    },
+    "argumentRule": {
+      "type": "object",
+      "description": "Fires on a command's arguments. Provide exactly one predicate.",
+      "additionalProperties": false,
+      "properties": {
+        "command": { "type": "string", "description": "Command-name glob this rule applies to, e.g. \"rm|rmdir|mkdir\"." },
+        "anyArgOutside": {
+          "type": "array",
+          "description": "Fires if any path-like argument is outside all of these roots.",
+          "items": { "type": "string" }
+        },
+        "allArgsInside": {
+          "type": "array",
+          "description": "Fires if there is at least one path-like argument and all are under some root.",
+          "items": { "type": "string" }
+        },
+        "anyArgMatches": { "type": "string", "description": "Fires if any raw argument matches this regex.", "format": "regex" },
+        "allArgsMatch": { "type": "string", "description": "Fires if every raw argument matches this regex.", "format": "regex" },
+        "decision": { "$ref": "#/definitions/decision" },
+        "description": { "type": "string", "description": "Shown to the model when the rule fires." },
+        "alternative": { "type": "string", "description": "What to do instead; shown to the model." }
+      },
+      "required": ["command", "decision"],
+      "oneOf": [
+        { "required": ["anyArgOutside"] },
+        { "required": ["allArgsInside"] },
+        { "required": ["anyArgMatches"] },
+        { "required": ["allArgsMatch"] }
+      ]
+    },
+    "interpreterConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "type": "array",
+          "description": "Bash command names that invoke this interpreter, e.g. [python, python3].",
+          "items": { "type": "string" }
+        },
+        "calls": {
+          "type": "array",
+          "description": "Rules over calls in the inline code.",
+          "items": { "$ref": "#/definitions/callRule" }
+        },
+        "imports": {
+          "type": "array",
+          "description": "Rules over imports in the inline code.",
+          "items": { "$ref": "#/definitions/importRule" }
+        },
+        "writes": { "$ref": "#/definitions/writeRule" }
+      }
+    },
+    "callRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "match": { "type": "string", "description": "Qualified callee glob, e.g. shutil.rmtree or subprocess.*." },
+        "argMatches": { "type": "string", "description": "Optional: fires only if any call argument text matches this regex.", "format": "regex" },
+        "pathArgsOutside": {
+          "type": "array",
+          "description": "Optional: fires only if a string path argument is outside all of these roots.",
+          "items": { "type": "string" }
+        },
+        "decision": { "$ref": "#/definitions/decision" },
+        "description": { "type": "string", "description": "Shown to the model when the rule fires." },
+        "alternative": { "type": "string", "description": "What to do instead; shown to the model." }
+      },
+      "required": ["match", "decision"]
+    },
+    "importRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "match": { "type": "string", "description": "Module-name glob, e.g. ctypes or socket*." },
+        "decision": { "$ref": "#/definitions/decision" },
+        "description": { "type": "string", "description": "Shown to the model when the rule fires." }
+      },
+      "required": ["match", "decision"]
+    },
+    "writeRule": {
+      "type": "object",
+      "description": "Sugar for \"a file is opened for writing\" outside the given roots.",
+      "additionalProperties": false,
+      "properties": {
+        "outside": {
+          "type": "array",
+          "description": "Fires when the written path is outside all of these roots.",
+          "items": { "type": "string" }
+        },
+        "decision": { "$ref": "#/definitions/decision" },
+        "description": { "type": "string", "description": "Shown to the model when the rule fires." },
+        "alternative": { "type": "string", "description": "What to do instead; shown to the model." }
+      },
+      "required": ["outside", "decision"]
+    }
+  }
+}

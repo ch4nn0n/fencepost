@@ -20,6 +20,29 @@ interface PresetMeta {
   description?: unknown;
 }
 
+/**
+ * Remove the top-level `meta:` block from preset source before rendering.
+ * The block exists to feed this generator's frontmatter; showing it in the
+ * "Full preset" listing would just be noise for someone copying the config.
+ */
+function stripMetaBlock(source: string): string {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  let inMeta = false;
+  for (const line of lines) {
+    if (inMeta) {
+      if (/^\s/.test(line) || line.trim() === '') continue;
+      inMeta = false;
+    }
+    if (/^meta:/.test(line)) {
+      inMeta = true;
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
+}
+
 const yamlFiles = readdirSync(presetsDir)
   .filter((f) => f.endsWith('.yaml'))
   .sort();
@@ -60,7 +83,7 @@ import:
 ## Full preset
 
 \`\`\`yaml title="presets/${file}"
-${source.trimEnd()}
+${stripMetaBlock(source)}
 \`\`\`
 `;
 
