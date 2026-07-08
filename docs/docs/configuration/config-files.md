@@ -9,13 +9,15 @@ fencepost reads its configuration from your project's `.claude/` directory. Ther
 
 ## Resolution order
 
-For a given project (`cwd` comes from the hook input), fencepost resolves config in this order:
+For a given project (`cwd` comes from the hook input), fencepost loads the **first** layer that exists:
 
-1. **`.claude/fencepost/` directory** with `*.yaml`/`*.yml` files → load all, merge alphabetically (`conf.d` style).
+1. **`.claude/fencepost/config/`** directory with `*.yaml`/`*.yml` files → load all, merge alphabetically (`conf.d` style).
 2. Else **`.claude/fencepost.yaml`** single file → load it.
-3. Else → **fail open** with `default: ask` and empty rule lists.
+3. Else **`~/.claude/fencepost/config/`** → user-level conf.d directory.
+4. Else **`~/.claude/fencepost.yaml`** → user-level single file.
+5. Else → built-in defaults (`default: ask`, empty rule lists).
 
-The directory form wins if it exists, so you can migrate from a single file to a directory without losing anything.
+Within each level the directory form wins if it exists, so you can migrate from a single file to a directory without losing anything. Project config completely shadows user-level config — the layers are not merged with each other.
 
 ## Single file
 
@@ -96,7 +98,7 @@ fencepost config    # prints sources + effective config
 
 ## Schema overview
 
-The full config shape:
+The full config shape (see the [configuration reference](../reference/configuration.md) for every field, default, and merge rule):
 
 ```yaml
 import: [ ... ]            # preset names to layer in as a base
@@ -105,6 +107,7 @@ onError: ask              # allow | deny | ask — when a command can't be check
 
 guidance: { ... }         # SessionStart guidance — see Guidance & chaining
 redirect: { ... }         # /tmp sandbox — see The sandbox
+secrets: { ... }          # secrets scanning — see Secrets protection
 
 tools:
   deny:  [ { tool, description, alternative? } ]   # glob, with metadata
@@ -131,4 +134,13 @@ Each section has its own page:
 - **[Structured bash rules](./structured-bash-rules.md)** — `redirects`, `arguments`
 - **[Nested interpreters](./interpreters.md)** — `interpreters`
 - **[The sandbox](./sandbox.md)** — `redirect`
+- **[Secrets protection](./secrets.md)** — `secrets`
 - **[Guidance & chaining](./guidance-and-chaining.md)** — `guidance`, `discourageChaining`
+
+:::tip Editor validation
+A [JSON Schema](https://github.com/ch4nn0n/fencepost/blob/main/schema/fencepost.schema.json) for the config ships with fencepost. Add this modeline to the top of your YAML for completion and validation in editors with the YAML language server:
+
+```yaml
+# yaml-language-server: $schema=https://ch4nn0n.github.io/fencepost/fencepost.schema.json
+```
+:::

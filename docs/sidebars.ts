@@ -47,7 +47,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Reference',
-      items: ['reference/cli-and-audit'],
+      items: ['reference/configuration', 'reference/cli-and-audit'],
     },
   ],
 };

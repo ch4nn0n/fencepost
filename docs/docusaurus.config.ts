@@ -16,6 +16,9 @@ const config: Config = {
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
 
+  // Serve the JSON Schema at /fencepost/fencepost.schema.json (matches its $id).
+  staticDirectories: ['static', '../schema'],
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
