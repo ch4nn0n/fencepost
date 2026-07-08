@@ -100,8 +100,11 @@ function evaluateCommand(
   if (argAllow) return base("allow", "Command allowed by rule", `bash.arguments: ${argAllow.command}`);
   const redirAllow = redirectMatch("allow");
   if (redirAllow) return base("allow", "Redirect allowed by rule", `bash.redirects`);
+  // A nested allow vouches for the inline code only when no other nested rule
+  // objected; otherwise a benign call (json.dumps) alongside a flagged one
+  // (subprocess.run) would smart-allow the whole snippet.
   const nestAllow = nestedMatch("allow");
-  if (nestAllow) return { ...nestAllow, matchedInput: text };
+  if (nestAllow && !nestedMatch("ask")) return { ...nestAllow, matchedInput: text };
 
   // Tier 3: ask.
   for (const rule of bash.ask) {

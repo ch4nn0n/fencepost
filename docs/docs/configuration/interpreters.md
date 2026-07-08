@@ -109,11 +109,12 @@ python3 -c "import shutil; shutil.rmtree('/tmp/claude/x')"
 
 ## Defaults via preset
 
-The bundled [`python-safety` preset](../presets.md) ships conservative defaults for both languages: **ask** on `subprocess`/`eval`/`exec`/`child_process`, **deny** destructive deletes and writes outside the sandbox. Import it rather than writing the rules by hand:
+The bundled [`python-safety` and `javascript-safety` presets](../presets.md) ship conservative defaults per language: **ask** on `subprocess`/`eval`/`exec`/`child_process`, unsafe deserialization, pathlib mutations, and network access; **deny** destructive deletes and writes outside the sandbox; **allow** everyday safe stdlib usage (`json`, `re`, `math`, ...) so it doesn't prompt. Import them rather than writing the rules by hand:
 
 ```yaml
 import:
   - python-safety
+  - javascript-safety
 ```
 
 ## Performance

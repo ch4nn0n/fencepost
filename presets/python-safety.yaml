@@ -1,12 +1,14 @@
 # Fencepost preset: python-safety
 
 meta:
-  title: Python & JS safety
+  title: Python safety
   description: >-
-    Inspects inline interpreter code (python -c, node -e, heredocs) and flags
-    destructive operations the shell can't see: deletes and writes outside
-    the sandbox, subprocess spawns, and dynamic execution. Pairs well with
-    the claude preset, which defines the /tmp/claude sandbox.
+    Inspects inline Python (python -c, heredocs) and flags destructive
+    operations the shell can't see: deletes and writes outside the sandbox,
+    subprocess spawns, dynamic execution, unsafe deserialization, and network
+    access. Everyday safe serialization and stdlib usage (json, yaml.safe_*,
+    re, math, ...) is explicitly allowed so it doesn't prompt. Pairs well with the claude preset, which
+    defines the /tmp/claude sandbox.
 
 # Limits: inline code only (not `python script.py`); aliased imports
 # (`import shutil as sh`) and dynamic dispatch are not resolved. This reduces
@@ -26,12 +28,25 @@ tools:
             pathArgsOutside: ["/tmp/claude", "."]
             decision: ask
             description: "Inline Python removes a file outside the sandbox."
+          - match: "*Path(*).unlink|*Path(*).rmdir|*Path(*).write_text|*Path(*).write_bytes"
+            decision: ask
+            description: "Inline Python mutates the filesystem via pathlib (path can't be checked against the sandbox)."
           - match: "subprocess.*|os.system|os.popen|os.exec*|os.spawn*"
             decision: ask
             description: "Inline Python is spawning a process the shell can't review."
           - match: "eval|exec|compile|__import__|getattr"
             decision: ask
             description: "Inline Python uses dynamic execution / reflection."
+          - match: "pickle.load|pickle.loads|pickle.Unpickler|marshal.load|marshal.loads|shelve.open|yaml.load*|yaml.full_load*|yaml.unsafe_load*"
+            decision: ask
+            description: "Inline Python deserializes data that can execute arbitrary code on load."
+            alternative: "Use json, or yaml.safe_load, for untrusted data."
+          - match: "urllib.request.*|requests.*|socket.*|http.client.*"
+            decision: ask
+            description: "Inline Python opens a network connection."
+          - match: "json.*|yaml.safe_*|yaml.dump*|re.*|math.*|csv.*|datetime.*|collections.*|itertools.*|base64.*|hashlib.*|uuid.*"
+            decision: allow
+            description: "Inline Python uses common safe stdlib tools."
         writes:
           outside: ["/tmp/claude", "."]
           decision: deny
@@ -41,19 +56,3 @@ tools:
           - match: "ctypes|cffi"
             decision: ask
             description: "Inline Python loads native code."
-
-      javascript:
-        names: ["node", "bun", "deno"]
-        calls:
-          - match: "fs.rmSync|fs.rm|fs.unlinkSync|fs.unlink|fs.rmdirSync|fs.rmdir"
-            pathArgsOutside: ["/tmp/claude", "."]
-            decision: deny
-            description: "Inline JS deletes from the filesystem outside the sandbox."
-            alternative: "Operate under /tmp/claude/, or delete specific files."
-          - match: "child_process.*|Bun.spawn*"
-            decision: ask
-            description: "Inline JS is spawning a process the shell can't review."
-        writes:
-          outside: ["/tmp/claude", "."]
-          decision: deny
-          description: "Inline JS writes a file outside the sandbox."

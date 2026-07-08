@@ -1,0 +1,42 @@
+# Fencepost preset: javascript-safety
+
+meta:
+  title: JavaScript & TypeScript safety
+  description: >-
+    Inspects inline JavaScript (node -e, bun -e, heredocs) and flags
+    destructive operations the shell can't see: deletes and writes outside
+    the sandbox and subprocess spawns. Typechecking (tsc --noEmit, deno
+    check, typecheck scripts) is allowed without prompting. Pairs well with
+    the claude preset, which defines the /tmp/claude sandbox.
+
+# Limits: inline code only (not `node script.js`); dynamic dispatch is not
+# resolved. This reduces accidental damage; it is not a sandbox.
+tools:
+  bash:
+    # --noEmit is required: plain `tsc` emits files, so it still prompts.
+    allowChecks:
+      - '^(npx\s+|bunx\s+|yarn\s+|pnpm\s+(exec\s+)?)?(vue-)?tsc\b(?=.*--noEmit)'
+      - '^deno\s+check\b'
+    allow:
+      - npm run typecheck
+      - bun run typecheck
+      - pnpm run typecheck
+      - yarn typecheck
+      - yarn run typecheck
+
+    interpreters:
+      javascript:
+        names: ["node", "bun", "deno"]
+        calls:
+          - match: "fs.rmSync|fs.rm|fs.unlinkSync|fs.unlink|fs.rmdirSync|fs.rmdir"
+            pathArgsOutside: ["/tmp/claude", "."]
+            decision: deny
+            description: "Inline JS deletes from the filesystem outside the sandbox."
+            alternative: "Operate under /tmp/claude/, or delete specific files."
+          - match: "child_process.*|Bun.spawn*"
+            decision: ask
+            description: "Inline JS is spawning a process the shell can't review."
+        writes:
+          outside: ["/tmp/claude", "."]
+          decision: deny
+          description: "Inline JS writes a file outside the sandbox."

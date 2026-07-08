@@ -80,7 +80,7 @@ Layer your own rules on top — imports are the base, your rules always win. See
 
 ## Bundled presets
 
-`claude` · `claude-web` · `git` · `gh` · `kubernetes` · `helm` · `helmfile` · `ansible` · `context7` · `playwright` · `filesystem` · `python-safety` · `secrets`
+`claude` · `claude-web` · `git` · `gh` · `kubernetes` · `helm` · `helmfile` · `ansible` · `context7` · `playwright` · `filesystem` · `python-safety` · `javascript-safety` · `secrets`
 
 See the [preset reference](https://ch4nn0n.github.io/fencepost/docs/presets).
 
