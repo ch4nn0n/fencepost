@@ -14,7 +14,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PLUGIN_DIR}}/hooks/pre-tool-use.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/pre-tool-use.sh",
             "timeout": 5
           }
         ]
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PLUGIN_DIR}}/hooks/post-tool-use.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/post-tool-use.sh",
             "timeout": 15
           }
         ]
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "{{PLUGIN_DIR}}/hooks/session-start.sh",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-start.sh",
             "timeout": 5
           }
         ]

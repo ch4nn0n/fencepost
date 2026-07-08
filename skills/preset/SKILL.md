@@ -47,16 +47,16 @@ Anything you leave unlisted falls through to the user's `default`; prefer that o
 
 ## 5. Validate
 
-Use the bundled CLI to confirm the merge resolved cleanly and the decisions land as intended (in an installed plugin the binary is `{{PLUGIN_DIR}}/bin/fencepost`; in a development clone use `bun run src/index.ts` or `node dist/index.js`):
+Use the bundled CLI to confirm the merge resolved cleanly and the decisions land as intended (in an installed plugin: `node "${CLAUDE_PLUGIN_ROOT}"/dist/index.js`; in a development clone: `bun run src/index.ts` or `node dist/index.js`):
 
 ```bash
 # Confirm the config is valid and see the effective merged rules + provenance.
-{{PLUGIN_DIR}}/bin/fencepost verify
+node "${CLAUDE_PLUGIN_ROOT}"/dist/index.js verify
 
 # Spot-check specific commands. Empty output means "allow" (silent fast path);
 # an "ask"/"deny" decision prints a JSON permissionDecision.
 echo '{"tool_name":"Bash","tool_input":{"command":"<tool> <subcommand> ..."},"cwd":"'"$PWD"'"}' \
-  | {{PLUGIN_DIR}}/bin/fencepost evaluate
+  | node "${CLAUDE_PLUGIN_ROOT}"/dist/index.js evaluate
 ```
 
 Run a representative command from each tier (one allow, one ask, one deny) and confirm the result.
