@@ -25,7 +25,7 @@ Before opening a pull request, make sure:
 
 - `bun test` passes (and add tests for new behaviour — the suite lives in [`test/`](./test)).
 - `bun run typecheck` is clean.
-- `bun run build` succeeds, and you've **committed the updated `dist/`** (it's the artifact the plugin ships, so CI fails if it's stale).
+- `bun run build` succeeds (`dist/` is generated, not committed — the release workflow builds and publishes it to the `dist` branch).
 
 CI runs all of these on every push and pull request.
 

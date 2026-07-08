@@ -94,7 +94,7 @@ bun run build        # bundle src/ → dist/index.js (+ wasm grammars)
 bun run dev          # run the entry point directly
 ```
 
-`dist/` is committed on purpose — it's the artifact the plugin ships — so rebuild and commit it whenever you change `src/`.
+`dist/` is generated and not committed: `main` is source-only. On each release, the release workflow builds the bundle and publishes it to the [`dist` branch](https://github.com/ch4nn0n/fencepost/tree/dist), which is what plugin installs clone.
 
 The documentation site lives in [`docs/`](./docs) (Docusaurus):
 

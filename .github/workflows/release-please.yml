@@ -34,7 +34,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
   publish:
-    name: Publish plugin archive
+    name: Publish plugin artifacts
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
@@ -42,6 +42,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Build exactly the released code, not whatever main has moved to.
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -53,6 +56,20 @@ jobs:
 
       - name: Build the bundle
         run: bun run build
+
+      # Plugin installs clone the `dist` branch (marketplace.json pins its ref
+      # there): each release adds one commit whose tree is the released source
+      # plus the built dist/. main stays source-only.
+      - name: Update the dist branch
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f dist
+          TREE=$(git write-tree)
+          PARENT=$(git fetch --depth=1 origin dist && git rev-parse FETCH_HEAD || true)
+          COMMIT=$(git commit-tree "$TREE" ${PARENT:+-p "$PARENT"} -m "build: fencepost $TAG")
+          git push origin "$COMMIT:refs/heads/dist"
 
       - name: Package & upload plugin archive
         env:

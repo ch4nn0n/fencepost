@@ -12,7 +12,8 @@
       "name": "fencepost",
       "source": {
         "source": "github",
-        "repo": "ch4nn0n/fencepost"
+        "repo": "ch4nn0n/fencepost",
+        "ref": "dist"
       },
       "description": "Intercepts every tool call and evaluates it against a YAML rule set, allowing, asking, or denying with actionable feedback.",
       "category": "security",
