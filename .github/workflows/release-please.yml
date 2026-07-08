@@ -33,6 +33,27 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
+      # release-please only refreshes its PR when release content changes, so
+      # the branch drifts behind main (and its CI then runs stale workflow
+      # files). Keep it current so merging is always one click. The app token
+      # makes the update trigger the PR's checks. Every failure mode is benign
+      # (no open PR, already current, conflict — rp force-pushes the branch on
+      # the next releasable commit), so this never fails the job.
+      - name: Keep the release PR up to date with main
+        if: steps.rp.outputs.release_created != 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          PR=$(gh pr list --repo "$GITHUB_REPOSITORY" \
+            --head release-please--branches--main--components--fencepost \
+            --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR" ]; then
+            echo "no open release PR"
+          else
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/pulls/$PR/update-branch" \
+              || echo "::notice::release PR #$PR not updated (already current or conflicting)"
+          fi
+
   publish:
     name: Publish plugin artifacts
     needs: release-please
@@ -49,7 +70,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.3
+          bun-version-file: .bun-version
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -85,3 +106,55 @@ jobs:
           cp -r .claude-plugin hooks skills presets dist README.md LICENSE "$PKG/"
           zip -r "$PKG.zip" "$PKG"
           gh release upload "$TAG" "$PKG.zip" --clobber
+
+  # Check the release from a consumer's perspective: clone the dist branch the
+  # way a plugin install does and assert everything publish promised is there.
+  # Publish is idempotent, so recovery from a red verify is re-running the
+  # workflow.
+  verify:
+    name: Verify published artifacts
+    needs: [release-please, publish]
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Clone the dist branch like a plugin install
+        run: git clone --depth 1 --branch dist "https://github.com/$GITHUB_REPOSITORY" install
+
+      - name: Smoke test the installed bundle under Node
+        working-directory: install
+        run: |
+          OUT=$(echo '{"tool_name":"Read","tool_input":{},"session_id":"verify","cwd":"/tmp","hook_event_name":"PreToolUse","tool_use_id":"x"}' \
+            | node dist/index.js evaluate)
+          echo "$OUT"
+          echo "$OUT" | grep -q '"permissionDecision"'
+
+      - name: Assert refs, version, and release asset match
+        working-directory: install
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          TIP=$(git rev-parse HEAD)
+          TAGSHA=$(git ls-remote origin "refs/tags/dist-$TAG" | cut -f1)
+          [ "$TAGSHA" = "$TIP" ] || { echo "::error::dist-$TAG ($TAGSHA) != dist branch tip ($TIP)"; exit 1; }
+          VERSION=$(node -p 'JSON.parse(require("fs").readFileSync(".claude-plugin/plugin.json","utf8")).version')
+          [ "v$VERSION" = "$TAG" ] || { echo "::error::plugin.json version v$VERSION != release $TAG"; exit 1; }
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+            | grep -qx "fencepost-$TAG.zip" \
+            || { echo "::error::release asset fencepost-$TAG.zip missing"; exit 1; }
+
+  # Docs publish per release so the site always describes an installable
+  # version. Deliberately gated on verify: a broken publish never ships docs.
+  docs:
+    name: Publish docs site
+    needs: [release-please, verify]
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+    with:
+      ref: ${{ needs.release-please.outputs.tag_name }}
