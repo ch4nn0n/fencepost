@@ -4865,7 +4865,7 @@ function evaluateCommand(cmd, config, cwd, nested) {
   if (redirAllow)
     return base("allow", "Redirect allowed by rule", `bash.redirects`);
   const nestAllow = nestedMatch("allow");
-  if (nestAllow)
+  if (nestAllow && !nestedMatch("ask"))
     return { ...nestAllow, matchedInput: text };
   for (const rule of bash.ask) {
     if (prefixMatch(text, rule))
