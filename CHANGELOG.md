@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/ch4nn0n/fencepost/compare/v0.1.0...v0.1.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **plugin:** restructure skills so the plugin manifest validates ([91719f9](https://github.com/ch4nn0n/fencepost/commit/91719f92ec13f1f841fb7a0ba4ff7205386ff7ad))
+
 ## 0.1.0 (2026-07-08)
 
 
