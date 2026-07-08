@@ -108,7 +108,7 @@ bun run build     # bundles src/ → dist/index.js and copies the wasm grammars
 bun test
 ```
 
-`dist/` is committed on purpose — it's the artifact the plugin ships — so rebuild and commit it whenever you change `src/`.
+`dist/` is generated and not committed: `main` is source-only. On each release, the release workflow builds the bundle and publishes it to the `dist` branch, which is what plugin installs clone.
 
 ## Next
 
