@@ -1,0 +1,72 @@
+# Fencepost preset: kubernetes
+
+meta:
+  title: Kubernetes (kubectl)
+  description: >-
+    Normalises away environment-specific flags (namespace, context,
+    kubeconfig), allows read-only inspection, asks before mutating cluster
+    state, and guards cascading or bulk deletes.
+
+tools:
+  bash:
+    normalise:
+      - prefix: kubectl
+        strip:
+          - '-n \S+'
+          - '--namespace[= ]\S+'
+          - '--context[= ]\S+'
+          - '--kubeconfig[= ]\S+'
+          - '--cluster[= ]\S+'
+          - '--as[= ]\S+'
+
+    checks:
+      - test: 'kubectl\s+delete\s+(namespace|ns)\b'
+        description: "Deleting a namespace cascades to every resource inside it."
+        alternative: "Delete the specific resources you mean, or confirm the namespace name explicitly outside fencepost."
+      - test: 'kubectl\s+delete\b.*\s--all\b'
+        description: "Deleting with --all removes every resource of that type in the namespace."
+        alternative: "Target specific resources by name or a precise label selector."
+      - test: 'kubectl\s+delete\s+(node|nodes|no)\b'
+        description: "Deleting a node removes it from the cluster and evicts its workloads."
+        alternative: "Use 'kubectl drain' to safely move workloads, or cordon the node first."
+
+    ask:
+      - kubectl delete
+      - kubectl apply
+      - kubectl create
+      - kubectl replace
+      - kubectl edit
+      - kubectl patch
+      - kubectl scale
+      - kubectl autoscale
+      - kubectl rollout
+      - kubectl set
+      - kubectl label
+      - kubectl annotate
+      - kubectl expose
+      - kubectl run
+      - kubectl cordon
+      - kubectl uncordon
+      - kubectl drain
+      - kubectl taint
+      - kubectl exec
+      - kubectl cp
+      - kubectl port-forward
+      - kubectl proxy
+
+    allow:
+      - kubectl get
+      - kubectl describe
+      - kubectl logs
+      - kubectl explain
+      - kubectl top
+      - kubectl diff
+      - kubectl api-resources
+      - kubectl api-versions
+      - kubectl cluster-info
+      - kubectl version
+      - kubectl config get-contexts
+      - kubectl config current-context
+      - kubectl config view
+      - kubectl auth can-i
+      - kubectl wait

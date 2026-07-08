@@ -1,0 +1,52 @@
+name: Bug report
+description: Something fencepost does wrong (a tool was wrongly allowed/denied, a crash, etc.)
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For **security** issues (e.g. fencepost allows something it should deny), please use private reporting via the Security tab instead of a public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did fencepost do, and what did you expect instead?
+      placeholder: "Running `git push --force` was allowed, but I expected it to be denied."
+    validations:
+      required: true
+  - type: textarea
+    id: tool-call
+    attributes:
+      label: The tool call / command
+      description: The exact command or tool input involved.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Your fencepost config
+      description: The relevant `.claude/fencepost.yaml` (or conf.d files) and any `import:`ed presets. Redact anything sensitive.
+      render: yaml
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: fencepost version
+      description: From `.claude-plugin/plugin.json`, or the installed release tag.
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime & OS
+      description: "Node or Bun version (`node --version`) and your OS."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Verbose output (optional)
+      description: Output of running the command through the bundle with `LOG_LEVEL=debug`, if you have it.
+      render: text

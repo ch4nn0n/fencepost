@@ -1,0 +1,42 @@
+# Fencepost preset: helmfile
+
+meta:
+  title: Helmfile
+  description: >-
+    Allows the read-only diff/template workflow, asks before sync and apply,
+    and guards a full destroy. Pairs well with the helm preset.
+
+tools:
+  bash:
+    normalise:
+      - prefix: helmfile
+        strip:
+          - '-n \S+'
+          - '--namespace[= ]\S+'
+          - '--kube-context[= ]\S+'
+          - '-l \S+'
+          - '--selector[= ]\S+'
+
+    checks:
+      - test: 'helmfile\s+(destroy|delete)\b'
+        description: "'helmfile destroy' uninstalls every release defined in the helmfile."
+        alternative: "Target a single release with '-l name=<release>', or uninstall it directly via 'helm uninstall <release>'."
+
+    ask:
+      - helmfile apply
+      - helmfile sync
+      - helmfile test
+      - helmfile destroy
+      - helmfile delete
+
+    allow:
+      - helmfile diff
+      - helmfile template
+      - helmfile list
+      - helmfile lint
+      - helmfile build
+      - helmfile status
+      - helmfile repos
+      - helmfile deps
+      - helmfile version
+      - helmfile write-values

@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Full-bleed dark background (GitHub crops app logos to a circle). -->
+  <rect width="512" height="512" fill="#14130c"/>
+  <!-- Two horizontal rails (sage). -->
+  <rect x="96" y="232" width="320" height="40" rx="20" fill="#9bb070"/>
+  <rect x="96" y="312" width="320" height="40" rx="20" fill="#9bb070"/>
+  <!-- Three fence posts; the middle one is the signal vermilion. -->
+  <rect x="128" y="116" width="46" height="280" rx="23" fill="#efe9d8"/>
+  <rect x="233" y="116" width="46" height="280" rx="23" fill="#ff7a4d"/>
+  <rect x="338" y="116" width="46" height="280" rx="23" fill="#efe9d8"/>
+</svg>

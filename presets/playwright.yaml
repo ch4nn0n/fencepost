@@ -1,0 +1,43 @@
+# Fencepost preset: playwright
+
+meta:
+  title: Playwright (MCP)
+  description: >-
+    Browser inspection and navigation tools run silently, tools that interact
+    with the page or reach the filesystem ask first, and the arbitrary
+    code-execution tool is denied outright.
+
+# The globs match the tool names regardless of how the MCP server is namespaced
+# in your install (e.g. mcp__playwright__browser_click or
+# mcp__plugin_playwright_playwright__browser_click).
+tools:
+  deny:
+    - tool: "mcp__*playwright*browser_run_code_unsafe"
+      description: "This tool runs arbitrary, unsandboxed code in the browser context."
+      alternative: "Use the structured browser tools (click, type, fill_form, navigate, snapshot) for the interaction you need."
+
+  ask:
+    - "mcp__*playwright*browser_click"
+    - "mcp__*playwright*browser_type"
+    - "mcp__*playwright*browser_fill_form"
+    - "mcp__*playwright*browser_select_option"
+    - "mcp__*playwright*browser_press_key"
+    - "mcp__*playwright*browser_hover"
+    - "mcp__*playwright*browser_drag"
+    - "mcp__*playwright*browser_drop"
+    - "mcp__*playwright*browser_file_upload"
+    - "mcp__*playwright*browser_handle_dialog"
+    - "mcp__*playwright*browser_evaluate"
+
+  allow:
+    - "mcp__*playwright*browser_snapshot"
+    - "mcp__*playwright*browser_take_screenshot"
+    - "mcp__*playwright*browser_navigate"
+    - "mcp__*playwright*browser_navigate_back"
+    - "mcp__*playwright*browser_wait_for"
+    - "mcp__*playwright*browser_resize"
+    - "mcp__*playwright*browser_console_messages"
+    - "mcp__*playwright*browser_network_request"
+    - "mcp__*playwright*browser_network_requests"
+    - "mcp__*playwright*browser_tabs"
+    - "mcp__*playwright*browser_close"

@@ -1,0 +1,69 @@
+import type { FencepostConfig } from "./types.js";
+
+/**
+ * Built-in guidance lines injected at session start. These steer Claude toward
+ * behaviours that work well with a permission-gated environment.
+ */
+export function defaultGuidance(config: FencepostConfig): string[] {
+  const target = config.redirect?.tmpTarget ?? "/tmp/claude";
+  const tmpRedirected = config.redirect?.tmp === true;
+
+  const lines = [
+    "This project is protected by fencepost, a permission checker. Some tool calls and shell commands are denied or require approval.",
+    "If a command is denied with a suggested alternative, use the alternative. Do not retry the same command or try to work around the rule.",
+    "If a tool or command fails because it needs authentication (a login, credentials, or an expired token), stop and ask the user to authenticate rather than retrying or attempting a workaround.",
+    tmpRedirected
+      ? `Write scratch and temporary files under ${target}. Paths under /tmp are automatically redirected there, and that directory is safe to clean up.`
+      : `Write scratch and temporary files under ${target} rather than directly in /tmp, so they stay isolated and easy to clean up.`,
+    "Prefer running shell commands one at a time over chaining them with && or ; so each can be reviewed independently.",
+    "Avoid destructive operations (recursive deletes, force pushes, bulk deletes) unless the user has explicitly asked for them.",
+  ];
+  return lines;
+}
+
+/**
+ * Secrets-scanning guidance (feature 24). `scannerName` is the probe result:
+ * a name when a scanner is installed, null when none is. Kept as a parameter
+ * so this module stays pure and testable.
+ */
+export function secretsGuidance(config: FencepostConfig, scannerName: string | null): string[] {
+  if (!config.secrets?.enabled) return [];
+  if (scannerName === null) {
+    const pinned = (config.secrets.scanner ?? "auto") !== "auto";
+    // A pinned-but-missing scanner is a misconfiguration: fencepost fails
+    // closed. "auto" with nothing installed just deactivates scanning.
+    if (pinned) {
+      return [
+        `⚠ Fencepost secrets protection is configured to use '${config.secrets.scanner}', but it is not installed. Fencepost is FAILING CLOSED: gated tool inputs are denied and tool output is withheld until the scanner is installed. Tell the user to install '${config.secrets.scanner}', or set secrets.scanner to "auto".`,
+      ];
+    }
+    return [
+      "⚠ Fencepost secrets protection is enabled but no supported scanner is installed, so secret scanning is INACTIVE. Tell the user to install one: 'brew install gitleaks' (recommended, fastest), 'brew install trufflehog', or 'pipx install detect-secrets'.",
+    ];
+  }
+  return [
+    `Secrets protection is active (scanner: ${scannerName}). Tool inputs containing credentials are denied, and secrets in tool output are replaced with [FENCEPOST:REDACTED ...] placeholders. Placeholders are not recoverable: never try to reconstruct, re-read, or guess a redacted value.`,
+  ];
+}
+
+/**
+ * Build the SessionStart additionalContext string from config, or null if
+ * guidance is disabled or empty.
+ */
+export function buildGuidance(config: FencepostConfig, secretsScanner?: string | null): string | null {
+  const guidance = config.guidance;
+  // Default to enabled when the section is absent.
+  const enabled = guidance?.enabled ?? true;
+  if (!enabled) return null;
+
+  const includeDefaults = guidance?.includeDefaults ?? true;
+  const lines: string[] = [];
+  if (includeDefaults) lines.push(...defaultGuidance(config));
+  if (secretsScanner !== undefined) lines.push(...secretsGuidance(config, secretsScanner));
+  if (guidance?.extra?.length) lines.push(...guidance.extra);
+
+  if (lines.length === 0) return null;
+
+  const header = "Fencepost guidance for this session:";
+  return [header, ...lines.map((l) => `- ${l}`)].join("\n");
+}

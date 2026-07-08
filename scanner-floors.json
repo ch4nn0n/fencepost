@@ -1,0 +1,31 @@
+{
+  "$comment": "Single source of truth for secret-scanner version support. The scanner-compat workflow reads `repo`/`asset`/`floor` to build its live N-3 + floor matrix, and `scripts/sync-secrets-docs.ts` injects `floor`/`note` into the compatibility matrix in docs/docs/configuration/secrets.md. Move a floor here and both stay correct. A floor only moves FORWARD, and only when a scanner's CLI/output changes in a way the adapter cannot bridge.",
+  "scanners": {
+    "gitleaks": {
+      "source": "github",
+      "repo": "gitleaks/gitleaks",
+      "asset": "linux_x64.tar.gz",
+      "floor": "8.19.3",
+      "note": "8.19.0–8.19.2 ship the `stdin` command but reject our report flags; 8.18.x has no `stdin` command at all."
+    },
+    "betterleaks": {
+      "source": "github",
+      "repo": "betterleaks/betterleaks",
+      "asset": "linux_x64.tar.gz",
+      "floor": "1.5.0",
+      "note": "Shares gitleaks' `stdin -f json` interface and report shape."
+    },
+    "trufflehog": {
+      "source": "github",
+      "repo": "trufflesecurity/trufflehog",
+      "asset": "linux_amd64.tar.gz",
+      "floor": "3.63.7",
+      "note": "Older releases use the same `filesystem --json` interface; line numbers are absent before later 3.6x builds, which only affects the (advisory) reported line."
+    },
+    "detect-secrets": {
+      "source": "pypi",
+      "floor": "1.4.0",
+      "note": "The `scan` baseline JSON shape has been stable across 1.2–1.5."
+    }
+  }
+}

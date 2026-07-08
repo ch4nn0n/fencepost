@@ -1,0 +1,23 @@
+tools:
+  bash:
+    normalise:
+      - prefix: kubectl
+        strip:
+          - '-n \S+'
+          - '--namespace \S+'
+          - '--context \S+'
+
+    deny:
+      - git branch -D
+      - git branch -d
+      - git push --force
+
+    ask:
+      - git push
+      - kubectl delete
+      - kubectl apply
+
+    allow:
+      - kubectl get
+      - kubectl describe
+      - kubectl logs

@@ -1,0 +1,439 @@
+/**
+ * fencepost — design system
+ *
+ * Aesthetic: "frontier survey / painted fence". Warm ivory paper, ink, a
+ * painted-vermilion signal accent, and a sage secondary. The recurring motif
+ * is the fencepost bar | — which doubles as the bash pipe operator.
+ *
+ * Decision states map to signal colours: allow (sage), ask (ochre), deny (clay).
+ */
+
+/* ------------------------------------------------------------------ *
+ *  Fonts
+ * ------------------------------------------------------------------ */
+:root {
+  --fp-font-display: 'Martian Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --fp-font-body: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --fp-font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Light theme (warm paper)
+ * ------------------------------------------------------------------ */
+:root {
+  --ifm-color-primary: #c63d16;
+  --ifm-color-primary-dark: #b23714;
+  --ifm-color-primary-darker: #a83413;
+  --ifm-color-primary-darkest: #8a2b0f;
+  --ifm-color-primary-light: #db4a20;
+  --ifm-color-primary-lighter: #e4512a;
+  --ifm-color-primary-lightest: #e96f4e;
+
+  --fp-paper: #f4efe3;
+  --fp-paper-2: #faf6ec;
+  --fp-ink: #1d1b15;
+  --fp-ink-soft: #524d40;
+  --fp-muted: #837c6c;
+  --fp-line: #ddd4c1;
+  --fp-line-strong: #c9bfa6;
+  --fp-accent: #c63d16;
+  --fp-accent-soft: #e8d3c6;
+  --fp-sage: #566b3f;
+  --fp-sage-soft: #d8e0c8;
+
+  --fp-allow: #4f7a36;
+  --fp-allow-bg: #e4ecd6;
+  --fp-ask: #a96a12;
+  --fp-ask-bg: #f3e6c9;
+  --fp-deny: #be3318;
+  --fp-deny-bg: #f3d9cf;
+
+  --ifm-background-color: var(--fp-paper);
+  --ifm-background-surface-color: var(--fp-paper-2);
+  --ifm-font-color-base: var(--fp-ink);
+  --ifm-heading-color: var(--fp-ink);
+  --ifm-font-family-base: var(--fp-font-body);
+  --ifm-font-family-monospace: var(--fp-font-mono);
+  --ifm-heading-font-family: var(--fp-font-display);
+
+  --ifm-navbar-background-color: rgba(244, 239, 227, 0.82);
+  --ifm-navbar-shadow: none;
+  --ifm-toc-border-color: var(--fp-line);
+  --ifm-color-content-secondary: var(--fp-muted);
+  --ifm-code-font-size: 0.86em;
+  --ifm-line-height-base: 1.7;
+  --ifm-heading-font-weight: 700;
+  --ifm-h1-font-size: 2.6rem;
+  --ifm-link-color: var(--fp-accent);
+  --ifm-link-hover-color: var(--ifm-color-primary-darkest);
+  --ifm-menu-color-active: var(--fp-accent);
+  --ifm-blockquote-color: var(--fp-ink-soft);
+  --ifm-blockquote-border-color: var(--fp-accent);
+
+  --docusaurus-highlighted-code-line-bg: rgba(198, 61, 22, 0.1);
+
+  --ifm-table-stripe-background: rgba(0, 0, 0, 0.02);
+  --ifm-table-border-color: var(--fp-line);
+  --ifm-pre-background: #fbf8f0;
+  --ifm-code-background: rgba(86, 107, 63, 0.12);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Dark theme (deep warm ink)
+ * ------------------------------------------------------------------ */
+[data-theme='dark'] {
+  --ifm-color-primary: #ff7a4d;
+  --ifm-color-primary-dark: #ff6230;
+  --ifm-color-primary-darker: #ff5621;
+  --ifm-color-primary-darkest: #e54309;
+  --ifm-color-primary-light: #ff926a;
+  --ifm-color-primary-lighter: #ff9e7a;
+  --ifm-color-primary-lightest: #ffbfa6;
+
+  --fp-paper: #15140d;
+  --fp-paper-2: #1d1b12;
+  --fp-ink: #efe9d8;
+  --fp-ink-soft: #c4bca6;
+  --fp-muted: #918a76;
+  --fp-line: #322e1f;
+  --fp-line-strong: #44402c;
+  --fp-accent: #ff7a4d;
+  --fp-accent-soft: #3a2418;
+  --fp-sage: #9bb070;
+  --fp-sage-soft: #25291a;
+
+  --fp-allow: #9dc06d;
+  --fp-allow-bg: #232a18;
+  --fp-ask: #e0a445;
+  --fp-ask-bg: #2e2615;
+  --fp-deny: #ff6a47;
+  --fp-deny-bg: #2f1c15;
+
+  --ifm-background-color: var(--fp-paper);
+  --ifm-background-surface-color: var(--fp-paper-2);
+  --ifm-font-color-base: var(--fp-ink);
+  --ifm-heading-color: var(--fp-ink);
+  --ifm-navbar-background-color: rgba(21, 20, 13, 0.85);
+  --ifm-toc-border-color: var(--fp-line);
+  --ifm-link-color: var(--fp-accent);
+  --ifm-link-hover-color: var(--ifm-color-primary-lightest);
+  --ifm-menu-color-active: var(--fp-accent);
+  --ifm-blockquote-border-color: var(--fp-accent);
+
+  --docusaurus-highlighted-code-line-bg: rgba(255, 122, 77, 0.14);
+  --ifm-table-stripe-background: rgba(255, 255, 255, 0.02);
+  --ifm-table-border-color: var(--fp-line);
+  --ifm-pre-background: #100f09;
+  --ifm-code-background: rgba(155, 176, 112, 0.14);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Global texture & atmosphere
+ * ------------------------------------------------------------------ */
+html {
+  background-color: var(--fp-paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(86, 107, 63, 0.06) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+
+[data-theme='dark'] body {
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(255, 122, 77, 0.05) 1px, transparent 0);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Typography
+ * ------------------------------------------------------------------ */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+h1 {
+  font-weight: 800;
+}
+
+.markdown h2 {
+  font-size: 1.7rem;
+  margin-top: 2.8rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--fp-line);
+  position: relative;
+}
+
+/* fencepost bar before each section heading */
+.markdown h2::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: 42px;
+  height: 3px;
+  background: var(--fp-accent);
+}
+
+.markdown h3 {
+  font-size: 1.2rem;
+  margin-top: 2rem;
+  font-weight: 600;
+}
+
+.markdown a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+article header h1 {
+  letter-spacing: -0.045em;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Navbar
+ * ------------------------------------------------------------------ */
+.navbar {
+  backdrop-filter: saturate(140%) blur(12px);
+  border-bottom: 1px solid var(--fp-line);
+}
+
+.navbar__title {
+  font-family: var(--fp-font-display);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  font-size: 1.05rem;
+}
+
+.navbar__title::before {
+  content: '|';
+  color: var(--fp-accent);
+  font-weight: 800;
+  margin-right: 0.3rem;
+}
+
+.navbar__link {
+  font-family: var(--fp-font-body);
+  font-weight: 500;
+  font-size: 0.92rem;
+}
+
+.navbar__link--active {
+  color: var(--fp-accent);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Sidebar
+ * ------------------------------------------------------------------ */
+.menu {
+  font-size: 0.9rem;
+  padding: 1rem 0.6rem !important;
+}
+
+.menu__list-item-collapsible .menu__link,
+.menu__link {
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.menu__link--active {
+  font-weight: 600;
+  background: var(--fp-accent-soft);
+}
+
+.menu__list .menu__list {
+  border-left: 1px solid var(--fp-line);
+  margin-left: 0.85rem;
+  padding-left: 0.4rem;
+}
+
+.theme-doc-sidebar-container {
+  border-right: 1px solid var(--fp-line) !important;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Code blocks
+ * ------------------------------------------------------------------ */
+.theme-code-block,
+pre[class*='language-'] {
+  border: 1px solid var(--fp-line);
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+.prism-code {
+  font-family: var(--fp-font-mono) !important;
+  font-size: 0.84rem;
+  line-height: 1.65;
+}
+
+code {
+  font-family: var(--fp-font-mono);
+  border: 1px solid var(--fp-line);
+  border-radius: 5px;
+  padding: 0.1rem 0.35rem;
+}
+
+a code {
+  border-color: transparent;
+}
+
+.theme-code-block .codeBlockTitle_node_modules-\@docusaurus,
+div[class*='codeBlockTitle'] {
+  font-family: var(--fp-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Tables — survey ledger look
+ * ------------------------------------------------------------------ */
+.markdown table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--fp-line);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.9rem;
+}
+
+.markdown table thead {
+  background: var(--fp-sage-soft);
+}
+
+.markdown table thead th {
+  font-family: var(--fp-font-display);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-bottom: 2px solid var(--fp-line-strong);
+}
+
+.markdown table th,
+.markdown table td {
+  border: 1px solid var(--fp-line);
+  padding: 0.6rem 0.85rem;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Blockquotes / admonitions
+ * ------------------------------------------------------------------ */
+.markdown blockquote {
+  background: var(--fp-paper-2);
+  border-left-width: 3px;
+  border-radius: 0 8px 8px 0;
+  padding: 0.6rem 1.1rem;
+}
+
+.theme-admonition {
+  border-radius: 10px;
+  border: 1px solid var(--fp-line);
+  border-left-width: 4px;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Pagination cards
+ * ------------------------------------------------------------------ */
+.pagination-nav__link {
+  border: 1px solid var(--fp-line);
+  border-radius: 10px;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--fp-accent);
+  transform: translateY(-2px);
+}
+
+.pagination-nav__sublabel {
+  font-family: var(--fp-font-display);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Decision pills (reusable in MDX)
+ * ------------------------------------------------------------------ */
+.fp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--fp-font-display);
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.fp-pill--allow {
+  color: var(--fp-allow);
+  background: var(--fp-allow-bg);
+}
+.fp-pill--ask {
+  color: var(--fp-ask);
+  background: var(--fp-ask-bg);
+}
+.fp-pill--deny {
+  color: var(--fp-deny);
+  background: var(--fp-deny-bg);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Footer
+ * ------------------------------------------------------------------ */
+.footer {
+  background: var(--fp-paper-2);
+  border-top: 1px solid var(--fp-line);
+  --ifm-footer-color: var(--fp-ink-soft);
+  --ifm-footer-link-color: var(--fp-ink-soft);
+  --ifm-footer-title-color: var(--fp-ink);
+}
+
+[data-theme='dark'] .footer {
+  background: #100f09;
+}
+
+.footer__title {
+  font-family: var(--fp-font-display);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.footer__link-item:hover {
+  color: var(--fp-accent);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Misc
+ * ------------------------------------------------------------------ */
+.theme-doc-markdown {
+  font-size: 1.02rem;
+}
+
+.table-of-contents__link--active {
+  color: var(--fp-accent);
+  font-weight: 600;
+}
+
+::selection {
+  background: var(--fp-accent);
+  color: var(--fp-paper-2);
+}
+
+.breadcrumbs__link {
+  font-family: var(--fp-font-mono);
+  font-size: 0.78rem;
+}

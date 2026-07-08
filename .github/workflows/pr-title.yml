@@ -1,0 +1,20 @@
+name: PR title
+
+# Lint the pull request title against Conventional Commits. Combined with
+# squash-merge (which uses the PR title as the commit subject), this keeps every
+# commit on main conventional so release-please can version and changelog it.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

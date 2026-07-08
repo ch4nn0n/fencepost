@@ -1,0 +1,110 @@
+import type { EvalResult, HookOutput } from "./types.js";
+
+/**
+ * Format an EvalResult into the hookSpecificOutput JSON for Claude Code.
+ *
+ * `updatedInput`, when provided, is the rewritten tool input (e.g. /tmp paths
+ * redirected to the sandbox). It is surfaced so the tool runs against the new
+ * input on allow/ask. It is ignored on deny (the call won't run).
+ *
+ * `manualRunCommand`, when provided (deny only, feature 23), is the verbatim
+ * command the user may choose to run themselves outside fencepost.
+ */
+export function formatOutput(
+  result: EvalResult,
+  updatedInput?: Record<string, unknown>,
+  manualRunCommand?: string,
+): HookOutput | null {
+  // Fast path: allow.
+  if (result.decision === "allow") {
+    if (!updatedInput) return null; // no output means allow
+    return {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+        updatedInput,
+      },
+    };
+  }
+
+  const output: HookOutput = {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: result.decision,
+      permissionDecisionReason: formatReason(result),
+    },
+  };
+
+  if (result.decision === "ask" && updatedInput) {
+    output.hookSpecificOutput.updatedInput = updatedInput;
+  }
+
+  if (result.decision === "deny") {
+    const contextParts: string[] = [];
+    if (result.chained) {
+      contextParts.push(
+        "The previous command chained multiple steps that would each need approval.",
+        "Run each step as its own Bash tool call so the user can review them individually.",
+      );
+    } else {
+      contextParts.push(
+        "The previous command was blocked by a fencepost permission rule.",
+        "Do not retry the same command.",
+      );
+      if (result.alternative) {
+        contextParts.push("Use the suggested alternative approach.");
+      }
+      if (result.isCompound) {
+        contextParts.push(
+          "Break compound commands into separate tool calls so each can be evaluated independently.",
+        );
+      }
+    }
+    if (manualRunCommand) {
+      // Lead with the alternative/rule; the manual run is a secondary escape hatch.
+      contextParts.push(
+        "If the user still wants to run the original command, they can run it themselves outside fencepost" +
+          " by typing it in the prompt prefixed with '!' (a user-run command does not pass through fencepost)." +
+          " Offer it to them in a copyable code block, exactly: " +
+          manualRunCommand,
+      );
+    }
+    output.hookSpecificOutput.additionalContext = contextParts.join(" ");
+  }
+
+  return output;
+}
+
+function formatReason(result: EvalResult): string {
+  const prefix = "Fencepost:";
+
+  if (result.decision === "deny") {
+    if (result.chained) {
+      return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
+    }
+    if (result.isCompound && result.offendingPart) {
+      let reason = `${prefix} blocked — compound command contains '${result.offendingPart}' which is not permitted (${result.reason}).`;
+      if (result.alternative) {
+        reason += ` Use this instead: ${result.alternative}.`;
+      }
+      reason += " Run commands separately rather than chaining with &&.";
+      return reason;
+    }
+
+    let reason = `${prefix} blocked — ${result.reason}`;
+    if (result.alternative) {
+      reason += `. Use this instead: ${result.alternative}`;
+    }
+    return reason;
+  }
+
+  if (result.decision === "ask") {
+    if (result.isCompound && result.offendingPart) {
+      return `${prefix} compound command contains '${result.offendingPart}' which requires approval.`;
+    }
+    const what = result.matchedInput ?? "this command";
+    return `${prefix} '${what}' requires approval.`;
+  }
+
+  return result.reason;
+}

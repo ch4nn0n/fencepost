@@ -1,0 +1,12 @@
+# Fencepost preset: context7
+
+meta:
+  title: Context7 (MCP)
+  description: >-
+    Context7's documentation lookup tools (resolve-library-id, query-docs)
+    are read-only, so they are allowed silently. The glob matches the tool
+    names however the MCP server is namespaced in your install.
+
+tools:
+  allow:
+    - "mcp__*context7*"

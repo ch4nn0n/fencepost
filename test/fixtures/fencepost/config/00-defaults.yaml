@@ -1,0 +1,13 @@
+default: ask
+
+tools:
+  allow:
+    - Read
+    - Glob
+    - Grep
+
+  bash:
+    checks:
+      - test: '\brm\s+(-[a-zA-Z]*r[a-zA-Z]*\s+|--recursive)'
+        description: Recursive delete is dangerous
+        alternative: Delete specific files individually

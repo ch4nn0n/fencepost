@@ -1,0 +1,23 @@
+{
+  "name": "fencepost",
+  "owner": {
+    "name": "ch4nn0n"
+  },
+  "metadata": {
+    "description": "A configurable permission gate for Claude Code tool calls.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "fencepost",
+      "source": {
+        "source": "github",
+        "repo": "ch4nn0n/fencepost",
+        "ref": "dist"
+      },
+      "description": "Intercepts every tool call and evaluates it against a YAML rule set, allowing, asking, or denying with actionable feedback.",
+      "category": "security",
+      "tags": ["security", "permissions", "guardrail", "hooks"]
+    }
+  ]
+}

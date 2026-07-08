@@ -1,0 +1,51 @@
+# Fencepost preset: helm
+
+meta:
+  title: Helm
+  description: >-
+    Allows read-only and local operations (list, status, template, lint,
+    diff), asks before anything that changes cluster state, and guards forced
+    upgrades that can delete and recreate resources.
+
+tools:
+  bash:
+    normalise:
+      - prefix: helm
+        strip:
+          - '-n \S+'
+          - '--namespace[= ]\S+'
+          - '--kube-context[= ]\S+'
+          - '--kubeconfig[= ]\S+'
+
+    checks:
+      - test: 'helm\s+upgrade\b.*\s--force\b'
+        description: "'helm upgrade --force' can delete and recreate resources, causing downtime."
+        alternative: "Run the upgrade without --force; if a resource is stuck, patch or delete it explicitly first."
+
+    ask:
+      - helm install
+      - helm upgrade
+      - helm rollback
+      - helm uninstall
+      - helm delete
+      - helm push
+      - helm test
+      - helm registry login
+
+    allow:
+      - helm list
+      - helm ls
+      - helm status
+      - helm get
+      - helm history
+      - helm show
+      - helm search
+      - helm template
+      - helm lint
+      - helm diff
+      - helm dependency
+      - helm repo list
+      - helm repo add
+      - helm repo update
+      - helm version
+      - helm env
