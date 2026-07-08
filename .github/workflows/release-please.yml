@@ -59,8 +59,12 @@ jobs:
 
       # Plugin installs clone the `dist` branch (marketplace.json pins its ref
       # there): each release adds one commit whose tree is the released source
-      # plus the built dist/. main stays source-only.
-      - name: Update the dist branch
+      # plus the built dist/. main stays source-only. Each snapshot also gets an
+      # immutable dist-vX.Y.Z tag so users can pin a version. The dist- prefix
+      # is load-bearing: release-please parses it as a foreign component and
+      # skips it; a bare vX.Y.Z tag off main would corrupt its next-release
+      # changelog computation (googleapis/release-please#1263).
+      - name: Publish the dist branch and dist-version tag
         run: |
           TAG="${{ needs.release-please.outputs.tag_name }}"
           git config user.name "github-actions[bot]"
@@ -69,7 +73,7 @@ jobs:
           TREE=$(git write-tree)
           PARENT=$(git fetch --depth=1 origin dist && git rev-parse FETCH_HEAD || true)
           COMMIT=$(git commit-tree "$TREE" ${PARENT:+-p "$PARENT"} -m "build: fencepost $TAG")
-          git push origin "$COMMIT:refs/heads/dist"
+          git push origin "$COMMIT:refs/heads/dist" "$COMMIT:refs/tags/dist-$TAG"
 
       - name: Package & upload plugin archive
         env:

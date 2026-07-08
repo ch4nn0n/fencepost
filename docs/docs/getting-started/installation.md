@@ -108,7 +108,19 @@ bun run build     # bundles src/ → dist/index.js and copies the wasm grammars
 bun test
 ```
 
-`dist/` is generated and not committed: `main` is source-only. On each release, the release workflow builds the bundle and publishes it to the `dist` branch, which is what plugin installs clone.
+`dist/` is generated and not committed: `main` is source-only. On each release, the release workflow builds the bundle and publishes it to the `dist` branch (latest, what plugin installs clone) and an immutable `dist-vX.Y.Z` tag per release.
+
+### Pinning a version
+
+Installs track the `dist` branch, i.e. the latest release. To pin a specific release, point a plugin source at its `dist-vX.Y.Z` tag instead:
+
+```json
+{
+  "source": "github",
+  "repo": "ch4nn0n/fencepost",
+  "ref": "dist-v0.1.0"
+}
+```
 
 ## Next
 
