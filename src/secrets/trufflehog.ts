@@ -43,10 +43,10 @@ export function parseTrufflehogOutput(stdout: string): SecretFinding[] {
   return findings;
 }
 
-export class TrufflehogScanner implements SecretScanner {
-  readonly name = "trufflehog" as const;
+export const trufflehogScanner: SecretScanner = {
+  name: "trufflehog",
 
-  async scan(content: string, timeoutMs: number): Promise<SecretFinding[]> {
+  async scan(content, timeoutMs) {
     const dir = await mkdtemp(join(tmpdir(), "fencepost-scan-"));
     try {
       const file = join(dir, "content");
@@ -70,5 +70,5 @@ export class TrufflehogScanner implements SecretScanner {
     } finally {
       await rm(dir, { recursive: true, force: true }).catch(() => {});
     }
-  }
-}
+  },
+};

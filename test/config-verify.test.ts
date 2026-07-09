@@ -1,8 +1,14 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { compileConfig } from "../src/config.js";
+
+// Point user-level config lookup at an empty dir so tests never see the
+// developer's real ~/.claude/fencepost.yaml.
+beforeAll(async () => {
+  process.env["FENCEPOST_HOME"] = await mkdtemp(join(tmpdir(), "fencepost-home-"));
+});
 
 async function project(yaml: string): Promise<string> {
   const tmp = await mkdtemp(join(tmpdir(), "fp-verify-"));

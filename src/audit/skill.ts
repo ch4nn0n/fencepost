@@ -1,7 +1,9 @@
 import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { resolveConfig } from "../config.js";
 import { analyseAudit } from "./analyse.js";
-import type { AuditEntry } from "../types.js";
+import type { AuditEntry, ResolvedConfig } from "../types.js";
 
 export async function runAuditSkill(cwd: string): Promise<void> {
   const config = await resolveConfig(cwd);
@@ -99,8 +101,6 @@ export async function runAuditSkill(cwd: string): Promise<void> {
 
 async function loadAuditLog(logPath: string): Promise<AuditEntry[]> {
   try {
-    const { readFile } = await import("node:fs/promises");
-    const { existsSync } = await import("node:fs");
     if (!existsSync(logPath)) return [];
     const text = await readFile(logPath, "utf8");
     return text
@@ -117,7 +117,7 @@ async function loadAuditLog(logPath: string): Promise<AuditEntry[]> {
   }
 }
 
-function printConfigSummary(config: ReturnType<typeof resolveConfig> extends Promise<infer T> ? T : never): void {
+function printConfigSummary(config: ResolvedConfig): void {
   const c = config;
   process.stdout.write(`default: **${c.default}**\n\n`);
 

@@ -73,7 +73,7 @@ export function analyseAudit(entries: AuditEntry[], config: FencepostConfig): An
   const promotionCandidates: PromotionCandidate[] = [];
   for (const [key, rec] of askMap) {
     if (rec.count < PROMOTION_THRESHOLD) continue;
-    const name = key.startsWith("bash:") ? key.slice(5) : key.slice(5);
+    const name = key.slice(5); // "bash:" and "tool:" prefixes are both 5 chars
     const isBash = rec.isBash;
     const section = isBash ? "bash.allow" : "tools.allow";
     promotionCandidates.push({

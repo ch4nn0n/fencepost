@@ -81,10 +81,7 @@ export async function scanWithGitleaksCli(
   }
 }
 
-export class GitleaksScanner implements SecretScanner {
-  readonly name = "gitleaks" as const;
-
-  scan(content: string, timeoutMs: number): Promise<SecretFinding[]> {
-    return scanWithGitleaksCli("gitleaks", "gitleaks", content, timeoutMs);
-  }
-}
+export const gitleaksScanner: SecretScanner = {
+  name: "gitleaks",
+  scan: (content, timeoutMs) => scanWithGitleaksCli("gitleaks", "gitleaks", content, timeoutMs),
+};

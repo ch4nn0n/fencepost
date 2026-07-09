@@ -2686,13 +2686,7 @@ var init_logger = __esm(() => {
 
 // src/util/glob.ts
 function globToRegex(pattern) {
-  const escaped = pattern.split("").map((ch) => {
-    if (ch === "*")
-      return ".*";
-    if (ch === "?")
-      return ".";
-    return ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  }).join("");
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
   return new RegExp(`^${escaped}$`);
 }
 function matchesGlob(toolName, pattern) {
@@ -4466,12 +4460,8 @@ var init_ast = __esm(() => {
 import { resolve as resolve2 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 function resolvePath(token, cwd) {
-  let t = token.replace(/['"`]/g, "").replace(/\\(.)/g, "$1");
-  if (t === "~")
-    t = homedir2();
-  else if (t.startsWith("~/"))
-    t = homedir2() + t.slice(1);
-  return resolve2(cwd, t);
+  const t = token.replace(/['"`]/g, "").replace(/\\(.)/g, "$1");
+  return resolve2(cwd, expandHome(t));
 }
 function isUnderRoot(target, root, cwd) {
   const t = resolvePath(target, cwd);
@@ -5138,26 +5128,23 @@ async function scanWithGitleaksCli(bin, scanner, content, timeoutMs) {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
-
-class GitleaksScanner {
-  name = "gitleaks";
-  scan(content, timeoutMs) {
-    return scanWithGitleaksCli("gitleaks", "gitleaks", content, timeoutMs);
-  }
-}
+var gitleaksScanner;
 var init_gitleaks = __esm(() => {
   init_scanner();
+  gitleaksScanner = {
+    name: "gitleaks",
+    scan: (content, timeoutMs) => scanWithGitleaksCli("gitleaks", "gitleaks", content, timeoutMs)
+  };
 });
 
 // src/secrets/betterleaks.ts
-class BetterleaksScanner {
-  name = "betterleaks";
-  scan(content, timeoutMs) {
-    return scanWithGitleaksCli("betterleaks", "betterleaks", content, timeoutMs);
-  }
-}
+var betterleaksScanner;
 var init_betterleaks = __esm(() => {
   init_gitleaks();
+  betterleaksScanner = {
+    name: "betterleaks",
+    scan: (content, timeoutMs) => scanWithGitleaksCli("betterleaks", "betterleaks", content, timeoutMs)
+  };
 });
 
 // src/secrets/trufflehog.ts
@@ -5191,30 +5178,30 @@ function parseTrufflehogOutput(stdout) {
   }
   return findings;
 }
-
-class TrufflehogScanner {
-  name = "trufflehog";
-  async scan(content, timeoutMs) {
-    const dir = await mkdtemp2(join5(tmpdir2(), "fencepost-scan-"));
-    try {
-      const file = join5(dir, "content");
-      await writeFile(file, content, { mode: 384 });
-      const baseArgs = ["filesystem", file, "--json", "--no-verification"];
-      let result = await runScanner("trufflehog", [...baseArgs, "--no-update"], null, timeoutMs);
-      if (result.exitCode !== 0) {
-        result = await runScanner("trufflehog", baseArgs, null, timeoutMs);
-      }
-      if (result.exitCode !== 0) {
-        throw new ScanUnavailableError("trufflehog", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
-      }
-      return parseTrufflehogOutput(result.stdout);
-    } finally {
-      await rm2(dir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
-}
+var trufflehogScanner;
 var init_trufflehog = __esm(() => {
   init_scanner();
+  trufflehogScanner = {
+    name: "trufflehog",
+    async scan(content, timeoutMs) {
+      const dir = await mkdtemp2(join5(tmpdir2(), "fencepost-scan-"));
+      try {
+        const file = join5(dir, "content");
+        await writeFile(file, content, { mode: 384 });
+        const baseArgs = ["filesystem", file, "--json", "--no-verification"];
+        let result = await runScanner("trufflehog", [...baseArgs, "--no-update"], null, timeoutMs);
+        if (result.exitCode !== 0) {
+          result = await runScanner("trufflehog", baseArgs, null, timeoutMs);
+        }
+        if (result.exitCode !== 0) {
+          throw new ScanUnavailableError("trufflehog", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
+        }
+        return parseTrufflehogOutput(result.stdout);
+      } finally {
+        await rm2(dir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  };
 });
 
 // src/secrets/detect-secrets.ts
@@ -5241,31 +5228,30 @@ function parseDetectSecretsOutput(stdout, filename) {
   }
   return findings;
 }
-
-class DetectSecretsScanner {
-  name = "detect-secrets";
-  async scan(content, timeoutMs) {
-    const dir = await mkdtemp3(join6(tmpdir3(), "fencepost-scan-"));
-    try {
-      const file = join6(dir, SCAN_FILENAME);
-      await writeFile2(file, content, { mode: 384 });
-      const result = await runScanner("detect-secrets", ["scan", SCAN_FILENAME], null, timeoutMs, dir);
-      if (result.exitCode !== 0) {
-        throw new ScanUnavailableError("detect-secrets", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
-      }
-      try {
-        return parseDetectSecretsOutput(result.stdout, SCAN_FILENAME);
-      } catch (err2) {
-        throw new ScanUnavailableError("detect-secrets", `unparseable output: ${err2.message}`);
-      }
-    } finally {
-      await rm3(dir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
-}
-var SCAN_FILENAME = "content";
+var SCAN_FILENAME = "content", detectSecretsScanner;
 var init_detect_secrets = __esm(() => {
   init_scanner();
+  detectSecretsScanner = {
+    name: "detect-secrets",
+    async scan(content, timeoutMs) {
+      const dir = await mkdtemp3(join6(tmpdir3(), "fencepost-scan-"));
+      try {
+        const file = join6(dir, SCAN_FILENAME);
+        await writeFile2(file, content, { mode: 384 });
+        const result = await runScanner("detect-secrets", ["scan", SCAN_FILENAME], null, timeoutMs, dir);
+        if (result.exitCode !== 0) {
+          throw new ScanUnavailableError("detect-secrets", `exit ${result.exitCode}: ${result.stderr.slice(0, 200)}`);
+        }
+        try {
+          return parseDetectSecretsOutput(result.stdout, SCAN_FILENAME);
+        } catch (err2) {
+          throw new ScanUnavailableError("detect-secrets", `unparseable output: ${err2.message}`);
+        }
+      } finally {
+        await rm3(dir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+  };
 });
 
 // src/secrets/detect.ts
@@ -5283,34 +5269,28 @@ function binaryOnPath(bin) {
   }
   return false;
 }
-function makeScanner(name2) {
-  switch (name2) {
-    case "gitleaks":
-      return new GitleaksScanner;
-    case "betterleaks":
-      return new BetterleaksScanner;
-    case "trufflehog":
-      return new TrufflehogScanner;
-    case "detect-secrets":
-      return new DetectSecretsScanner;
-  }
-}
 function findScanner(secrets) {
   const pref = secrets?.scanner ?? "auto";
   const candidates2 = pref === "auto" ? PREFERENCE : [pref];
   for (const name2 of candidates2) {
     if (binaryOnPath(name2))
-      return makeScanner(name2);
+      return SCANNERS[name2];
   }
   return null;
 }
-var PREFERENCE;
+var PREFERENCE, SCANNERS;
 var init_detect = __esm(() => {
   init_gitleaks();
   init_betterleaks();
   init_trufflehog();
   init_detect_secrets();
   PREFERENCE = ["gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
+  SCANNERS = {
+    gitleaks: gitleaksScanner,
+    betterleaks: betterleaksScanner,
+    trufflehog: trufflehogScanner,
+    "detect-secrets": detectSecretsScanner
+  };
 });
 
 // src/secrets/redact.ts
@@ -5613,34 +5593,28 @@ function binaryOnPath2(bin) {
   }
   return false;
 }
-function makeScanner2(name2) {
-  switch (name2) {
-    case "gitleaks":
-      return new GitleaksScanner;
-    case "betterleaks":
-      return new BetterleaksScanner;
-    case "trufflehog":
-      return new TrufflehogScanner;
-    case "detect-secrets":
-      return new DetectSecretsScanner;
-  }
-}
 function findScanner2(secrets) {
   const pref = secrets?.scanner ?? "auto";
   const candidates2 = pref === "auto" ? PREFERENCE2 : [pref];
   for (const name2 of candidates2) {
     if (binaryOnPath2(name2))
-      return makeScanner2(name2);
+      return SCANNERS2[name2];
   }
   return null;
 }
-var PREFERENCE2;
+var PREFERENCE2, SCANNERS2;
 var init_detect2 = __esm(() => {
   init_gitleaks();
   init_betterleaks();
   init_trufflehog();
   init_detect_secrets();
   PREFERENCE2 = ["gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
+  SCANNERS2 = {
+    gitleaks: gitleaksScanner,
+    betterleaks: betterleaksScanner,
+    trufflehog: trufflehogScanner,
+    "detect-secrets": detectSecretsScanner
+  };
 });
 
 // src/config.ts
@@ -5648,7 +5622,7 @@ import { join as join9, resolve as resolve3, dirname as dirname4 } from "node:pa
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 import { homedir as homedir3 } from "node:os";
 import { existsSync as existsSync3 } from "node:fs";
-import { readFile as readFile4 } from "node:fs/promises";
+import { readdir as readdir2, readFile as readFile4 } from "node:fs/promises";
 function note2(level, file, message) {
   if (issueSink2)
     issueSink2.push({ level, file, message });
@@ -6108,8 +6082,7 @@ async function loadYamlFile2(filePath) {
 async function loadConfDir2(dirPath) {
   let entries;
   try {
-    const { readdir } = await import("node:fs/promises");
-    entries = await readdir(dirPath);
+    entries = await readdir2(dirPath);
   } catch {
     return null;
   }
@@ -6192,7 +6165,7 @@ async function compileConfig2(cwd) {
   }
 }
 async function resolveInternal2(cwd) {
-  const home = homedir3();
+  const home = process.env["FENCEPOST_HOME"] || homedir3();
   const claudeDir = join9(resolve3(cwd), ".claude");
   const candidates2 = [
     { confDir: join9(claudeDir, "fencepost", "config"), singleFile: join9(claudeDir, "fencepost.yaml") },
@@ -6318,7 +6291,7 @@ function analyseAudit(entries, config) {
   for (const [key, rec] of askMap) {
     if (rec.count < PROMOTION_THRESHOLD)
       continue;
-    const name2 = key.startsWith("bash:") ? key.slice(5) : key.slice(5);
+    const name2 = key.slice(5);
     const isBash = rec.isBash;
     const section = isBash ? "bash.allow" : "tools.allow";
     promotionCandidates.push({
@@ -6390,6 +6363,8 @@ __export(exports_skill, {
   runAuditSkill: () => runAuditSkill
 });
 import { join as join10 } from "node:path";
+import { existsSync as existsSync4 } from "node:fs";
+import { readFile as readFile5 } from "node:fs/promises";
 async function runAuditSkill(cwd) {
   const config = await resolveConfig(cwd);
   const { _sources } = config;
@@ -6519,8 +6494,6 @@ tools:
 }
 async function loadAuditLog(logPath) {
   try {
-    const { readFile: readFile5 } = await import("node:fs/promises");
-    const { existsSync: existsSync4 } = await import("node:fs");
     if (!existsSync4(logPath))
       return [];
     const text = await readFile5(logPath, "utf8");
@@ -6591,7 +6564,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 var moduleDir = dirname(fileURLToPath(import.meta.url));
 var DEFAULT_DISCOURAGE_CHAINING = true;
 var DEFAULT_BASH_CONFIG = {
@@ -7104,7 +7077,6 @@ async function loadYamlFile(filePath) {
 async function loadConfDir(dirPath) {
   let entries;
   try {
-    const { readdir } = await import("node:fs/promises");
     entries = await readdir(dirPath);
   } catch {
     return null;
@@ -7188,7 +7160,7 @@ async function compileConfig(cwd) {
   }
 }
 async function resolveInternal(cwd) {
-  const home = homedir();
+  const home = process.env["FENCEPOST_HOME"] || homedir();
   const claudeDir = join(resolve(cwd), ".claude");
   const candidates = [
     { confDir: join(claudeDir, "fencepost", "config"), singleFile: join(claudeDir, "fencepost.yaml") },
@@ -7335,14 +7307,6 @@ function formatReason(result) {
     if (result.chained) {
       return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
     }
-    if (result.isCompound && result.offendingPart) {
-      let reason2 = `${prefix} blocked — compound command contains '${result.offendingPart}' which is not permitted (${result.reason}).`;
-      if (result.alternative) {
-        reason2 += ` Use this instead: ${result.alternative}.`;
-      }
-      reason2 += " Run commands separately rather than chaining with &&.";
-      return reason2;
-    }
     let reason = `${prefix} blocked — ${result.reason}`;
     if (result.alternative) {
       reason += `. Use this instead: ${result.alternative}`;
@@ -7350,9 +7314,6 @@ function formatReason(result) {
     return reason;
   }
   if (result.decision === "ask") {
-    if (result.isCompound && result.offendingPart) {
-      return `${prefix} compound command contains '${result.offendingPart}' which requires approval.`;
-    }
     const what = result.matchedInput ?? "this command";
     return `${prefix} '${what}' requires approval.`;
   }
@@ -7362,12 +7323,12 @@ function formatReason(result) {
 // src/audit/logger.ts
 init_logger();
 import { join as join3, dirname as dirname3 } from "node:path";
+import { mkdir, appendFile } from "node:fs/promises";
 async function writeAuditEntry(entry, cwd) {
   const logPath = join3(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
   try {
     const line = JSON.stringify(entry) + `
 `;
-    const { mkdir, appendFile } = await import("node:fs/promises");
     await mkdir(dirname3(logPath), { recursive: true });
     await appendFile(logPath, line, "utf8");
   } catch (err2) {

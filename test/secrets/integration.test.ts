@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { binaryOnPath } from "../../src/secrets/detect.js";
-import { GitleaksScanner } from "../../src/secrets/gitleaks.js";
-import { BetterleaksScanner } from "../../src/secrets/betterleaks.js";
-import { TrufflehogScanner } from "../../src/secrets/trufflehog.js";
-import { DetectSecretsScanner } from "../../src/secrets/detect-secrets.js";
+import { gitleaksScanner } from "../../src/secrets/gitleaks.js";
+import { betterleaksScanner } from "../../src/secrets/betterleaks.js";
+import { trufflehogScanner } from "../../src/secrets/trufflehog.js";
+import { detectSecretsScanner } from "../../src/secrets/detect-secrets.js";
 import { scanToolOutput } from "../../src/secrets/scan.js";
 import type { FencepostConfig } from "../../src/types.js";
 
@@ -48,7 +48,7 @@ describe.skipIf(!binaryOnPath("gitleaks"))("gitleaks (real binary)", () => {
   });
 
   it("finds and redacts a fake GitHub PAT end to end", async () => {
-    const scanner = new GitleaksScanner();
+    const scanner = gitleaksScanner;
     const findings = await scanner.scan(SAMPLE, TIMEOUT_MS);
     expect(findings.some((f) => f.ruleId === "github-pat" && f.secret === FAKE_PAT)).toBe(true);
 
@@ -59,7 +59,7 @@ describe.skipIf(!binaryOnPath("gitleaks"))("gitleaks (real binary)", () => {
   }, TIMEOUT_MS);
 
   it("returns no findings for clean content", async () => {
-    const findings = await new GitleaksScanner().scan("nothing secret here\n", TIMEOUT_MS);
+    const findings = await gitleaksScanner.scan("nothing secret here\n", TIMEOUT_MS);
     expect(findings).toEqual([]);
   }, TIMEOUT_MS);
 });
@@ -72,7 +72,7 @@ describe.skipIf(!binaryOnPath("betterleaks"))("betterleaks (real binary)", () =>
   });
 
   it("finds and redacts a fake GitHub PAT end to end", async () => {
-    const scanner = new BetterleaksScanner();
+    const scanner = betterleaksScanner;
     const findings = await scanner.scan(SAMPLE, TIMEOUT_MS);
     expect(findings.some((f) => f.ruleId === "github-pat" && f.secret === FAKE_PAT)).toBe(true);
 
@@ -91,7 +91,7 @@ describe.skipIf(!binaryOnPath("trufflehog"))("trufflehog (real binary)", () => {
   });
 
   it("finds the fake PAT via a temp file", async () => {
-    const findings = await new TrufflehogScanner().scan(SAMPLE, TIMEOUT_MS);
+    const findings = await trufflehogScanner.scan(SAMPLE, TIMEOUT_MS);
     expect(findings.some((f) => f.ruleId === "Github" && f.secret === FAKE_PAT)).toBe(true);
   }, TIMEOUT_MS);
 });
@@ -104,7 +104,7 @@ describe.skipIf(!binaryOnPath("detect-secrets"))("detect-secrets (real binary)",
   });
 
   it("reports the secret's line without raw text", async () => {
-    const findings = await new DetectSecretsScanner().scan(SAMPLE, TIMEOUT_MS);
+    const findings = await detectSecretsScanner.scan(SAMPLE, TIMEOUT_MS);
     expect(findings.length).toBeGreaterThan(0);
     expect(findings.every((f) => f.secret === undefined)).toBe(true);
     expect(findings.some((f) => f.line === 2)).toBe(true);

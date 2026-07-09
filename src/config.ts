@@ -3,7 +3,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { logger } from "./logger.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -624,7 +624,6 @@ async function loadConfDir(
 ): Promise<{ config: FencepostConfig; sources: string[]; imports: string[] } | null> {
   let entries: string[];
   try {
-    const { readdir } = await import("node:fs/promises");
     entries = await readdir(dirPath);
   } catch {
     return null; // directory absent — not an error
@@ -741,7 +740,9 @@ export async function compileConfig(cwd: string): Promise<CompiledConfig> {
 }
 
 async function resolveInternal(cwd: string): Promise<ResolvedConfig> {
-  const home = homedir();
+  // FENCEPOST_HOME overrides where user-level config is looked up, so tests
+  // (and unusual setups) don't pick up the real ~/.claude/fencepost.yaml.
+  const home = process.env["FENCEPOST_HOME"] || homedir();
   const claudeDir = join(resolve(cwd), ".claude");
 
   const candidates = [
