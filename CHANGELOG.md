@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/ch4nn0n/fencepost/compare/v0.3.0...v0.4.0) (2026-07-09)
+
+
+### Features
+
+* **presets:** allow Skill and ToolSearch in claude preset ([8b89844](https://github.com/ch4nn0n/fencepost/commit/8b898447d1ee4ce18d88830ef1246c15f1d1a1ec))
+
+
+### Bug Fixes
+
+* isolate config tests from the real user config ([e7cf92d](https://github.com/ch4nn0n/fencepost/commit/e7cf92db072620c93730b304f0752951d68707b4))
+
 ## [0.3.0](https://github.com/ch4nn0n/fencepost/compare/v0.2.0...v0.3.0) (2026-07-09)
 
 
