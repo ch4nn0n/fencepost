@@ -1,8 +1,17 @@
-import { describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it } from "bun:test";
 import { resolve } from "node:path";
 import { resolveConfig } from "../src/config.js";
 
 const FIXTURES_DIR = resolve(import.meta.dir, "fixtures");
+
+// Point user-level config lookup at an empty dir so tests never see the
+// developer's real ~/.claude/fencepost.yaml.
+beforeAll(async () => {
+  const { mkdtemp } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  process.env["FENCEPOST_HOME"] = await mkdtemp(join(tmpdir(), "fencepost-home-"));
+});
 
 // The fixtures directory has .claude/fencepost/config/ inside it via symlink trick —
 // we use a directory that contains a .claude/fencepost/config/ structure.

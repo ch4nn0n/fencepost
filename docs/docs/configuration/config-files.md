@@ -19,6 +19,8 @@ For a given project (`cwd` comes from the hook input), fencepost loads the **fir
 
 Within each level the directory form wins if it exists, so you can migrate from a single file to a directory without losing anything. Project config completely shadows user-level config — the layers are not merged with each other.
 
+Setting `$FENCEPOST_HOME` overrides where the user-level layers (3 and 4) are looked up, replacing `~`. It exists for test isolation and unusual setups; normally leave it unset.
+
 ## Single file
 
 The simplest setup. Everything in one place:

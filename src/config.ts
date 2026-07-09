@@ -740,7 +740,9 @@ export async function compileConfig(cwd: string): Promise<CompiledConfig> {
 }
 
 async function resolveInternal(cwd: string): Promise<ResolvedConfig> {
-  const home = homedir();
+  // FENCEPOST_HOME overrides where user-level config is looked up, so tests
+  // (and unusual setups) don't pick up the real ~/.claude/fencepost.yaml.
+  const home = process.env["FENCEPOST_HOME"] || homedir();
   const claudeDir = join(resolve(cwd), ".claude");
 
   const candidates = [
