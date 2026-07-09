@@ -43,6 +43,94 @@ function shellWrapperCode(cmd: ExtractedCommand): string | null {
   return null;
 }
 
+// GNU xargs option surface, used to find where the wrapped command starts.
+// Value-taking flags consume the rest of their bundle or the next token.
+const XARGS_VALUE_FLAGS = new Set(["a", "d", "E", "I", "L", "n", "P", "s"]);
+// Deprecated flags whose value is optional and must be attached (-iR, -lN, -eEOF).
+const XARGS_ATTACHED_OPTIONAL_FLAGS = new Set(["e", "i", "l"]);
+const XARGS_PLAIN_FLAGS = new Set(["0", "o", "p", "r", "t", "x"]);
+const XARGS_VALUE_LONGS = new Set([
+  "--arg-file",
+  "--delimiter",
+  "--max-args",
+  "--max-chars",
+  "--max-procs",
+  "--process-slot-var",
+]);
+// Long options whose optional value is only accepted attached (--eof=STR).
+const XARGS_OPTIONAL_LONGS = new Set(["--eof", "--max-lines", "--replace"]);
+const XARGS_PLAIN_LONGS = new Set([
+  "--null",
+  "--no-run-if-empty",
+  "--interactive",
+  "--verbose",
+  "--exit",
+  "--open-tty",
+  "--show-limits",
+  "--help",
+  "--version",
+]);
+
+type XargsPayload =
+  | { kind: "command"; cmd: ExtractedCommand }
+  | { kind: "opaque"; flag: string }
+  | null; // not xargs, or no inner command (bare `xargs` defaults to echo)
+
+/**
+ * Extract the command an `xargs` invocation will run, as a structured command
+ * built from the already-unquoted argv tokens. Deliberately NOT re-joined and
+ * re-parsed as shell: xargs execs its argv directly without a shell, and
+ * re-parsing a joined string would lose token boundaries (`xargs sh -c 'git
+ * clean -xfd'` would truncate the -c payload to `git`, a permissive misparse).
+ *
+ * Any flag not in the tables above makes the invocation opaque: guessing wrong
+ * about whether it consumes the next token would misplace the command start,
+ * and a wrong guess can dress a dangerous command up as an allowed one
+ * (`xargs -E grep rm -rf /` runs rm, not grep).
+ */
+function xargsInnerCommand(cmd: ExtractedCommand): XargsPayload {
+  if (cmd.name !== "xargs") return null;
+  const toks = cmd.args;
+  let i = 0;
+  while (i < toks.length) {
+    const t = toks[i]!;
+    if (t === "--") {
+      i++;
+      break;
+    }
+    if (!t.startsWith("-") || t === "-") break; // the inner command starts here
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=");
+      const name = eq === -1 ? t : t.slice(0, eq);
+      if (XARGS_PLAIN_LONGS.has(name) || XARGS_OPTIONAL_LONGS.has(name)) i += 1;
+      else if (XARGS_VALUE_LONGS.has(name)) i += eq === -1 ? 2 : 1;
+      else return { kind: "opaque", flag: t };
+    } else {
+      // Short-flag bundle: plain flags may precede one value-taking flag, whose
+      // value is the rest of the bundle or, when that is empty, the next token.
+      let consumesNext = false;
+      for (let j = 1; j < t.length; j++) {
+        const ch = t[j]!;
+        if (XARGS_PLAIN_FLAGS.has(ch)) continue;
+        if (XARGS_VALUE_FLAGS.has(ch)) {
+          consumesNext = j === t.length - 1;
+          break;
+        }
+        if (XARGS_ATTACHED_OPTIONAL_FLAGS.has(ch)) break; // value, if any, is attached
+        return { kind: "opaque", flag: t };
+      }
+      i += consumesNext ? 2 : 1;
+    }
+  }
+  const rest = toks.slice(i);
+  const name = rest[0];
+  if (!name) return null;
+  return {
+    kind: "command",
+    cmd: { text: rest.join(" "), name, args: rest.slice(1), redirects: [], heredoc: null },
+  };
+}
+
 function safeTest(pattern: string, text: string): boolean {
   try {
     return new RegExp(pattern).test(text);
@@ -126,6 +214,49 @@ function evaluateCommand(
   return { decision: config.default, reason: `No matching rule; default is ${config.default}`, matchedInput: text };
 }
 
+/**
+ * Evaluate one extracted command plus anything it wraps. Shell bodies carried
+ * by `sh -c` / `bash -c` / `eval` are re-parsed and evaluated so their inner
+ * commands face the full rule set instead of riding through as a string
+ * argument; the argv handed to `xargs` is evaluated as a command in its own
+ * right for the same reason.
+ */
+async function evaluateExtracted(
+  cmd: ExtractedCommand,
+  config: FencepostConfig,
+  cwd: string,
+  depth: number,
+  results: EvalResult[],
+): Promise<void> {
+  const nested = await analyseInterpreter(cmd, config, cwd);
+  results.push(evaluateCommand(cmd, config, cwd, nested));
+
+  const inner = shellWrapperCode(cmd);
+  if (inner) results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
+
+  const payload = xargsInnerCommand(cmd);
+  if (!payload) return;
+  const onError = config.onError ?? "ask";
+  if (payload.kind === "opaque") {
+    results.push({
+      decision: onError,
+      reason: `Unrecognised xargs flag ${payload.flag}; cannot tell where the inner command starts.`,
+      matchedInput: cmd.text,
+    });
+    return;
+  }
+  if (depth >= MAX_WRAPPER_DEPTH) {
+    logger.warn({ command: cmd.text, depth }, "xargs nesting too deep, applying onError posture");
+    results.push({
+      decision: onError,
+      reason: "Command nests wrappers too deeply to analyse safely.",
+      matchedInput: cmd.text,
+    });
+    return;
+  }
+  await evaluateExtracted(payload.cmd, config, cwd, depth + 1, results);
+}
+
 /** Evaluate loose redirects (not bound to a single command) on their own. */
 function evaluateLooseRedirects(
   looseRedirects: Redirect[],
@@ -181,13 +312,7 @@ export async function evaluateBashAst(
 
   const results: EvalResult[] = [];
   for (const cmd of res.commands) {
-    const nested = await analyseInterpreter(cmd, config, cwd);
-    results.push(evaluateCommand(cmd, config, cwd, nested));
-    // Re-parse and evaluate any shell body carried by `sh -c` / `bash -c` / `eval`
-    // so its inner commands face the full rule set instead of riding through as a
-    // string argument.
-    const inner = shellWrapperCode(cmd);
-    if (inner) results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
+    await evaluateExtracted(cmd, config, cwd, depth, results);
   }
   const loose = evaluateLooseRedirects(res.looseRedirects, config, cwd);
   if (loose) results.push(loose);

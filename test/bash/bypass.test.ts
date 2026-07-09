@@ -102,3 +102,53 @@ describe("shell wrappers are analysed", () => {
     expect(r.decision).toBe("deny");
   });
 });
+
+// Vuln 4: xargs execs its argv; the wrapped command must face the full rule
+// set, and flag parsing must never misplace where that command starts.
+describe("xargs is unwrapped", () => {
+  const c = cfg({ deny: ["rm", "git clean -xfd"], allow: ["xargs", "grep", "echo", "sh"] });
+
+  it("allows xargs grep when grep is allowed", async () => {
+    const r = await evaluateBashAst('grep -rl kind . | xargs grep -l "^kind: ClusterSecretStore"', c, CWD);
+    expect(r.decision).toBe("allow");
+  });
+
+  it("denies xargs rm when rm is denied", async () => {
+    expect((await evaluateBashAst("echo /tmp/x | xargs rm -rf", c, CWD)).decision).toBe("deny");
+  });
+
+  it("skips xargs flags, separate and attached, to find the command", async () => {
+    expect((await evaluateBashAst("xargs -0 -n 1 -I {} grep foo {}", c, CWD)).decision).toBe("allow");
+    expect((await evaluateBashAst("xargs -0n1 -I{} grep foo {}", c, CWD)).decision).toBe("allow");
+    expect((await evaluateBashAst("xargs --max-args=1 --null grep foo", c, CWD)).decision).toBe("allow");
+    expect((await evaluateBashAst("xargs -- grep foo", c, CWD)).decision).toBe("allow");
+    expect((await evaluateBashAst("xargs -0 -- rm -rf /x", c, CWD)).decision).toBe("deny");
+  });
+
+  it("does not mistake a flag value for the command", async () => {
+    // -E consumes "grep": the command xargs runs is rm, not grep.
+    expect((await evaluateBashAst("xargs -E grep rm -rf /x", c, CWD)).decision).toBe("deny");
+  });
+
+  it("falls back to onError on unrecognised flags", async () => {
+    // BSD-only -J: we cannot tell whether it consumes the next token.
+    expect((await evaluateBashAst("xargs -J % grep foo", c, CWD)).decision).toBe("ask");
+    const r = await evaluateBashAst("xargs -J % grep foo", cfg({ allow: ["xargs", "grep"] }, { onError: "deny" }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+
+  it("unwraps a shell wrapper handed to xargs without losing the -c payload", async () => {
+    expect((await evaluateBashAst('xargs sh -c "git clean -xfd"', c, CWD)).decision).toBe("deny");
+  });
+
+  it("allows bare xargs (implicit echo) on the xargs rule alone", async () => {
+    expect((await evaluateBashAst("echo hi | xargs", c, CWD)).decision).toBe("allow");
+    expect((await evaluateBashAst("echo hi | xargs -n", c, CWD)).decision).toBe("allow");
+  });
+
+  it("fails closed on absurdly deep xargs nesting", async () => {
+    const cmd = "xargs ".repeat(10) + "grep foo";
+    const r = await evaluateBashAst(cmd, cfg({ allow: ["xargs", "grep"] }, { onError: "deny" }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+});

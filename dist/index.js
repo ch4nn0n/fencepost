@@ -4797,6 +4797,54 @@ function shellWrapperCode(cmd) {
   }
   return null;
 }
+function xargsInnerCommand(cmd) {
+  if (cmd.name !== "xargs")
+    return null;
+  const toks = cmd.args;
+  let i3 = 0;
+  while (i3 < toks.length) {
+    const t = toks[i3];
+    if (t === "--") {
+      i3++;
+      break;
+    }
+    if (!t.startsWith("-") || t === "-")
+      break;
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=");
+      const name3 = eq === -1 ? t : t.slice(0, eq);
+      if (XARGS_PLAIN_LONGS.has(name3) || XARGS_OPTIONAL_LONGS.has(name3))
+        i3 += 1;
+      else if (XARGS_VALUE_LONGS.has(name3))
+        i3 += eq === -1 ? 2 : 1;
+      else
+        return { kind: "opaque", flag: t };
+    } else {
+      let consumesNext = false;
+      for (let j = 1;j < t.length; j++) {
+        const ch = t[j];
+        if (XARGS_PLAIN_FLAGS.has(ch))
+          continue;
+        if (XARGS_VALUE_FLAGS.has(ch)) {
+          consumesNext = j === t.length - 1;
+          break;
+        }
+        if (XARGS_ATTACHED_OPTIONAL_FLAGS.has(ch))
+          break;
+        return { kind: "opaque", flag: t };
+      }
+      i3 += consumesNext ? 2 : 1;
+    }
+  }
+  const rest = toks.slice(i3);
+  const name2 = rest[0];
+  if (!name2)
+    return null;
+  return {
+    kind: "command",
+    cmd: { text: rest.join(" "), name: name2, args: rest.slice(1), redirects: [], heredoc: null }
+  };
+}
 function safeTest(pattern, text) {
   try {
     return new RegExp(pattern).test(text);
@@ -4868,6 +4916,35 @@ function evaluateCommand(cmd, config, cwd, nested) {
   }
   return { decision: config.default, reason: `No matching rule; default is ${config.default}`, matchedInput: text };
 }
+async function evaluateExtracted(cmd, config, cwd, depth, results) {
+  const nested = await analyseInterpreter(cmd, config, cwd);
+  results.push(evaluateCommand(cmd, config, cwd, nested));
+  const inner = shellWrapperCode(cmd);
+  if (inner)
+    results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
+  const payload = xargsInnerCommand(cmd);
+  if (!payload)
+    return;
+  const onError = config.onError ?? "ask";
+  if (payload.kind === "opaque") {
+    results.push({
+      decision: onError,
+      reason: `Unrecognised xargs flag ${payload.flag}; cannot tell where the inner command starts.`,
+      matchedInput: cmd.text
+    });
+    return;
+  }
+  if (depth >= MAX_WRAPPER_DEPTH) {
+    logger.warn({ command: cmd.text, depth }, "xargs nesting too deep, applying onError posture");
+    results.push({
+      decision: onError,
+      reason: "Command nests wrappers too deeply to analyse safely.",
+      matchedInput: cmd.text
+    });
+    return;
+  }
+  await evaluateExtracted(payload.cmd, config, cwd, depth + 1, results);
+}
 function evaluateLooseRedirects(looseRedirects, config, cwd) {
   const redirects = config.tools.bash.redirects ?? [];
   for (const d of ["deny", "ask", "allow"]) {
@@ -4907,11 +4984,7 @@ async function evaluateBashAst(rawCommand, config, cwd, depth = 0) {
   }
   const results = [];
   for (const cmd of res.commands) {
-    const nested = await analyseInterpreter(cmd, config, cwd);
-    results.push(evaluateCommand(cmd, config, cwd, nested));
-    const inner = shellWrapperCode(cmd);
-    if (inner)
-      results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
+    await evaluateExtracted(cmd, config, cwd, depth, results);
   }
   const loose = evaluateLooseRedirects(res.looseRedirects, config, cwd);
   if (loose)
@@ -4935,7 +5008,7 @@ async function evaluateBashAst(rawCommand, config, cwd, depth = 0) {
   logger.info({ command: rawCommand, decision: winner.decision, rule: winner.matchedRule }, "decision");
   return winner;
 }
-var SHELL_WRAPPERS, MAX_WRAPPER_DEPTH = 8;
+var SHELL_WRAPPERS, MAX_WRAPPER_DEPTH = 8, XARGS_VALUE_FLAGS, XARGS_ATTACHED_OPTIONAL_FLAGS, XARGS_PLAIN_FLAGS, XARGS_VALUE_LONGS, XARGS_OPTIONAL_LONGS, XARGS_PLAIN_LONGS;
 var init_evaluate_ast = __esm(() => {
   init_ast();
   init_ast_interp();
@@ -4943,6 +5016,29 @@ var init_evaluate_ast = __esm(() => {
   init_normalise();
   init_logger();
   SHELL_WRAPPERS = new Set(["sh", "bash", "dash", "zsh", "ash", "ksh"]);
+  XARGS_VALUE_FLAGS = new Set(["a", "d", "E", "I", "L", "n", "P", "s"]);
+  XARGS_ATTACHED_OPTIONAL_FLAGS = new Set(["e", "i", "l"]);
+  XARGS_PLAIN_FLAGS = new Set(["0", "o", "p", "r", "t", "x"]);
+  XARGS_VALUE_LONGS = new Set([
+    "--arg-file",
+    "--delimiter",
+    "--max-args",
+    "--max-chars",
+    "--max-procs",
+    "--process-slot-var"
+  ]);
+  XARGS_OPTIONAL_LONGS = new Set(["--eof", "--max-lines", "--replace"]);
+  XARGS_PLAIN_LONGS = new Set([
+    "--null",
+    "--no-run-if-empty",
+    "--interactive",
+    "--verbose",
+    "--exit",
+    "--open-tty",
+    "--show-limits",
+    "--help",
+    "--version"
+  ]);
 });
 
 // src/secrets/scanner.ts
