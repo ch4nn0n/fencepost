@@ -31,6 +31,8 @@ tools:
     - ExitPlanMode
     - BashOutput
     - KillShell
+    - Skill
+    - ToolSearch
 
   bash:
     # Structured rules (feature 20) over the parsed command.
