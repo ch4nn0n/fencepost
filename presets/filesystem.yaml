@@ -65,6 +65,10 @@ tools:
       - yq
       - awk
       - sed
+      # Plumbing. Safe to allow: fencepost unwraps the command xargs runs and
+      # evaluates it against the full rule set, so `xargs rm` still hits the
+      # rm rules and unrecognised xargs flags fall back to the onError posture.
+      - xargs
       # Misc read-only info
       - echo
       - printf
