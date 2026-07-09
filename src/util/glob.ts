@@ -5,14 +5,9 @@
  */
 export function globToRegex(pattern: string): RegExp {
   const escaped = pattern
-    .split("")
-    .map((ch) => {
-      if (ch === "*") return ".*";
-      if (ch === "?") return ".";
-      // Escape all regex metacharacters
-      return ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-    })
-    .join("");
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&") // escape regex metacharacters
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
   return new RegExp(`^${escaped}$`);
 }
 

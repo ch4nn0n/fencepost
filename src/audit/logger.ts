@@ -1,4 +1,5 @@
 import { join, dirname } from "node:path";
+import { mkdir, appendFile } from "node:fs/promises";
 import { logger } from "../logger.js";
 import type { AuditEntry } from "../types.js";
 
@@ -7,8 +8,6 @@ export async function writeAuditEntry(entry: AuditEntry, cwd: string): Promise<v
   const logPath = join(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
   try {
     const line = JSON.stringify(entry) + "\n";
-
-    const { mkdir, appendFile } = await import("node:fs/promises");
     await mkdir(dirname(logPath), { recursive: true });
     await appendFile(logPath, line, "utf8");
   } catch (err) {

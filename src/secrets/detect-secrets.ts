@@ -37,10 +37,10 @@ export function parseDetectSecretsOutput(stdout: string, filename: string): Secr
 
 const SCAN_FILENAME = "content";
 
-export class DetectSecretsScanner implements SecretScanner {
-  readonly name = "detect-secrets" as const;
+export const detectSecretsScanner: SecretScanner = {
+  name: "detect-secrets",
 
-  async scan(content: string, timeoutMs: number): Promise<SecretFinding[]> {
+  async scan(content, timeoutMs) {
     const dir = await mkdtemp(join(tmpdir(), "fencepost-scan-"));
     try {
       const file = join(dir, SCAN_FILENAME);
@@ -60,5 +60,5 @@ export class DetectSecretsScanner implements SecretScanner {
     } finally {
       await rm(dir, { recursive: true, force: true }).catch(() => {});
     }
-  }
-}
+  },
+};

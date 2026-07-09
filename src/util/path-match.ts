@@ -15,10 +15,8 @@ export function resolvePath(token: string, cwd: string): string {
   // absolute path (e.g. `"/etc/passwd"`) can't be reinterpreted as relative and
   // escape containment checks. Tokens reaching here are normally already
   // unquoted, but never trust that for a security decision.
-  let t = token.replace(/['"`]/g, "").replace(/\\(.)/g, "$1");
-  if (t === "~") t = homedir();
-  else if (t.startsWith("~/")) t = homedir() + t.slice(1);
-  return resolve(cwd, t);
+  const t = token.replace(/['"`]/g, "").replace(/\\(.)/g, "$1");
+  return resolve(cwd, expandHome(t));
 }
 
 /** True if `target` is the root dir itself or nested under it. */

@@ -1,5 +1,5 @@
 import { scanWithGitleaksCli } from "./gitleaks.js";
-import type { SecretFinding, SecretScanner } from "./scanner.js";
+import type { SecretScanner } from "./scanner.js";
 
 /**
  * betterleaks adapter. betterleaks is a gitleaks successor by the same team
@@ -8,10 +8,7 @@ import type { SecretFinding, SecretScanner } from "./scanner.js";
  * the gitleaks CLI driver verbatim. Validation is never triggered: we pass no
  * validation flags, so no network calls are made from the hook.
  */
-export class BetterleaksScanner implements SecretScanner {
-  readonly name = "betterleaks" as const;
-
-  scan(content: string, timeoutMs: number): Promise<SecretFinding[]> {
-    return scanWithGitleaksCli("betterleaks", "betterleaks", content, timeoutMs);
-  }
-}
+export const betterleaksScanner: SecretScanner = {
+  name: "betterleaks",
+  scan: (content, timeoutMs) => scanWithGitleaksCli("betterleaks", "betterleaks", content, timeoutMs),
+};

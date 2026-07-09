@@ -17,10 +17,10 @@
  */
 import { spawnSync } from "node:child_process";
 import { binaryOnPath } from "../src/secrets/detect.js";
-import { GitleaksScanner } from "../src/secrets/gitleaks.js";
-import { BetterleaksScanner } from "../src/secrets/betterleaks.js";
-import { TrufflehogScanner } from "../src/secrets/trufflehog.js";
-import { DetectSecretsScanner } from "../src/secrets/detect-secrets.js";
+import { gitleaksScanner } from "../src/secrets/gitleaks.js";
+import { betterleaksScanner } from "../src/secrets/betterleaks.js";
+import { trufflehogScanner } from "../src/secrets/trufflehog.js";
+import { detectSecretsScanner } from "../src/secrets/detect-secrets.js";
 import type { SecretScanner } from "../src/secrets/scanner.js";
 
 // Assembled from fragments so the literal token never sits in a committed file.
@@ -40,10 +40,10 @@ interface Target {
 const semver = (s: string): string => s.match(/\d+\.\d+\.\d+(?:[.-][0-9A-Za-z.-]+)?/)?.[0] ?? s;
 
 const ALL_TARGETS: Target[] = [
-  { name: "gitleaks", scanner: new GitleaksScanner(), version: () => semver(run("gitleaks", ["version"])) },
-  { name: "betterleaks", scanner: new BetterleaksScanner(), version: () => semver(run("betterleaks", ["version"])) },
-  { name: "trufflehog", scanner: new TrufflehogScanner(), version: () => semver(run("trufflehog", ["--version"])) },
-  { name: "detect-secrets", scanner: new DetectSecretsScanner(), version: () => semver(run("detect-secrets", ["--version"])) },
+  { name: "gitleaks", scanner: gitleaksScanner, version: () => semver(run("gitleaks", ["version"])) },
+  { name: "betterleaks", scanner: betterleaksScanner, version: () => semver(run("betterleaks", ["version"])) },
+  { name: "trufflehog", scanner: trufflehogScanner, version: () => semver(run("trufflehog", ["--version"])) },
+  { name: "detect-secrets", scanner: detectSecretsScanner, version: () => semver(run("detect-secrets", ["--version"])) },
 ];
 
 // BENCH_SCANNERS=gitleaks,detect-secrets restricts the run (handy when one

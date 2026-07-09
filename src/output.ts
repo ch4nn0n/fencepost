@@ -82,15 +82,6 @@ function formatReason(result: EvalResult): string {
     if (result.chained) {
       return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
     }
-    if (result.isCompound && result.offendingPart) {
-      let reason = `${prefix} blocked — compound command contains '${result.offendingPart}' which is not permitted (${result.reason}).`;
-      if (result.alternative) {
-        reason += ` Use this instead: ${result.alternative}.`;
-      }
-      reason += " Run commands separately rather than chaining with &&.";
-      return reason;
-    }
-
     let reason = `${prefix} blocked — ${result.reason}`;
     if (result.alternative) {
       reason += `. Use this instead: ${result.alternative}`;
@@ -99,9 +90,6 @@ function formatReason(result: EvalResult): string {
   }
 
   if (result.decision === "ask") {
-    if (result.isCompound && result.offendingPart) {
-      return `${prefix} compound command contains '${result.offendingPart}' which requires approval.`;
-    }
     const what = result.matchedInput ?? "this command";
     return `${prefix} '${what}' requires approval.`;
   }
