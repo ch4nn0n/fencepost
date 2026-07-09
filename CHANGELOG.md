@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/ch4nn0n/fencepost/compare/v0.2.0...v0.3.0) (2026-07-09)
+
+
+### Features
+
+* **presets:** allow Explore agent in claude preset ([0422251](https://github.com/ch4nn0n/fencepost/commit/0422251d297f4a3a96f168aad16a304149e24ab4))
+* unwrap xargs and evaluate its command ([21a67bf](https://github.com/ch4nn0n/fencepost/commit/21a67bf053018de98e6cfd39891ffc8e405a8faf))
+
 ## [0.2.0](https://github.com/ch4nn0n/fencepost/compare/v0.1.1...v0.2.0) (2026-07-08)
 
 
