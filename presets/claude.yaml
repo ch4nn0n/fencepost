@@ -22,6 +22,7 @@ tools:
     - Read
     - Glob
     - Grep
+    - Explore
     - Edit
     - Write
     - NotebookEdit
