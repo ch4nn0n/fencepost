@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/ch4nn0n/fencepost/compare/v0.4.1...v0.5.0) (2026-07-10)
+
+
+### Features
+
+* **presets:** allow Agent in claude preset ([65df7ae](https://github.com/ch4nn0n/fencepost/commit/65df7ae2b6aa6355dcbcc037f0de71a29663056f))
+
 ## [0.4.1](https://github.com/ch4nn0n/fencepost/compare/v0.4.0...v0.4.1) (2026-07-10)
 
 
