@@ -33,6 +33,7 @@ tools:
     - KillShell
     - Skill
     - ToolSearch
+    - Agent
 
   bash:
     # Structured rules (feature 20) over the parsed command.
