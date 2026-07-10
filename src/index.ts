@@ -113,7 +113,7 @@ async function runEvaluate(): Promise<void> {
       result,
       normalisedCommand,
     });
-    void writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry, input.cwd);
 
     // On a Bash deny, optionally offer the user the verbatim original command to
     // run themselves via `! <command>` (feature 23).
@@ -190,7 +190,7 @@ async function runPostToolUse(): Promise<void> {
       rules: scan.withheld ? ["unavailable"] : scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
       count: scan.redactions.reduce((n, r) => n + r.count, 0),
     };
-    void writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry, input.cwd);
 
     const output = {
       hookSpecificOutput: {
