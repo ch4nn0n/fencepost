@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/ch4nn0n/fencepost/compare/v0.4.0...v0.4.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* flush audit log before process exit ([d5fb82f](https://github.com/ch4nn0n/fencepost/commit/d5fb82f7af22f23e87d2f7b8a689dc069277b8bf))
+
 ## [0.4.0](https://github.com/ch4nn0n/fencepost/compare/v0.3.0...v0.4.0) (2026-07-09)
 
 

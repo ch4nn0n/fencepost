@@ -7610,7 +7610,7 @@ async function runEvaluate() {
       result,
       normalisedCommand
     });
-    writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry, input.cwd);
     let manualRunCommand;
     if (result.decision === "deny" && input.tool_name === "Bash" && config.tools.bash.offerManualRun !== false) {
       manualRunCommand = String(input.tool_input["command"] ?? "") || undefined;
@@ -7667,7 +7667,7 @@ async function runPostToolUse() {
       rules: scan.withheld ? ["unavailable"] : scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
       count: scan.redactions.reduce((n, r) => n + r.count, 0)
     };
-    writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry, input.cwd);
     const output = {
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
