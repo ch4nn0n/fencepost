@@ -316,6 +316,7 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
 
   const obj = raw as Record<string, unknown>;
 
+  const defaultSet = obj["default"] !== undefined;
   const defaultDecision = obj["default"] ?? "ask";
   if (!isDecision(defaultDecision)) {
     note("error", source, `invalid 'default' value: ${JSON.stringify(obj["default"])} (expected allow|deny|ask)`);
@@ -425,6 +426,7 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
 
   const result: FencepostConfig = {
     default: defaultDecision,
+    _defaultSet: defaultSet,
     tools: {
       deny,
       ask,
@@ -504,7 +506,10 @@ function mergeSecrets(
 
 function mergeConfigs(base: FencepostConfig, override: FencepostConfig): FencepostConfig {
   return {
-    default: override.default, // last wins
+    // Set-wins, like onError: a layer that omits `default` inherits it
+    // instead of resetting it to "ask".
+    default: override._defaultSet ? override.default : base.default,
+    _defaultSet: override._defaultSet || base._defaultSet,
     onError: override.onError ?? base.onError,
     tools: {
       deny: [...base.tools.deny, ...override.tools.deny],

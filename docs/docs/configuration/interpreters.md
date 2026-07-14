@@ -31,7 +31,7 @@ Read these first — they define what this feature is and isn't:
 
 During [AST extraction](./structured-bash-rules.md), a command is treated as an *interpreter invocation with inline code* when its name is in a configured interpreter's `names` **and** it carries inline code via a code flag (`-c`/`-e`/`-r`) or a heredoc body. The code string is the literal content of the string/heredoc node — fencepost takes tree-sitter's `string_content`/`raw_string`/`heredoc_body` rather than slicing quotes itself.
 
-Language routing: `python`/`python3` → tree-sitter-python; `node`/`bun`/`deno` → tree-sitter-javascript. Grammars are **lazy-loaded** per language, only when triggered, so a plain `ls` pays nothing.
+Language routing: the command name is looked up in each configured interpreter's `names` list (yours to edit), and the map **key** picks the grammar: `python` → tree-sitter-python, `javascript` → tree-sitter-javascript. With the schema below, `python`/`python3` route to the Python grammar and `node`/`bun`/`deno` to the JavaScript one. Grammars are **lazy-loaded** per language, only when triggered, so a plain `ls` pays nothing.
 
 ## Schema
 
@@ -89,8 +89,8 @@ tools:
 
 | Rule | Fields |
 |------|--------|
-| **`calls[]`** | `match` (qualified callee; `*` within a name, `|` alternation), optional `argMatches` (regex over arg text), optional `pathArgsOutside` (fire only if a string path arg is outside all roots), `decision`, `description`, `alternative` |
-| **`writes`** | `outside` (roots), `decision`, `description`, `alternative` — sugar for "a file opened for writing" (`open(p,'w'\|'a'\|'x'\|'+')` in Python; `fs.writeFileSync`/`createWriteStream`/`appendFileSync` in JS) |
+| **`calls[]`** | `match` (qualified callee; `*` matches any characters *including dots*, so `os.*` also matches `os.path.join`; `|` alternation), optional `argMatches` (regex over arg text), optional `pathArgsOutside` (fire only if a string path arg is outside all roots), `decision`, `description`, `alternative` |
+| **`writes`** | `outside` (roots), `decision`, `description`, `alternative` — sugar for "a file opened for writing" (`open(p,'w'\|'a'\|'x'\|'+')` in Python; `fs.writeFile`/`fs.writeFileSync`/`fs.appendFile`/`fs.appendFileSync`/`fs.createWriteStream`/`Bun.write` in JS) |
 | **`imports[]`** | `match` (module name; `*`/`|`), `decision`, `description` |
 
 ## Precedence

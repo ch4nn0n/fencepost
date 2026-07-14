@@ -50,8 +50,8 @@ tools:
 
 - **Pipes are exempt.** `a | b` is a single data-flow operation; splitting it changes its meaning. Pipes are still split for *evaluation* (security), but a pipe alone never triggers the chaining deny — only `&&`, `||`, `;` do.
 - **Allow chains pass through.** If every part is allowed, the chain is allowed — no needless friction.
-- **Deny chains are already denied**, with the [compound guidance](./bash-rules.md#compound-commands) naming the offending sub-command.
-- **Loops and conditionals are exempt.** Control-flow scaffolding is stripped first; a loop is one unit, not a chain to split.
+- **Deny chains are already denied**, with the [compound guidance](./bash-rules.md#compound-commands) advising Claude to break the command into separate tool calls.
+- **Loops and conditionals are exempt.** A control-flow construct (`for`, `while`, `if`, `case`) anywhere in the command exempts the *whole* command from the chaining deny, even sequencing outside the loop like `for f in *; do lint "$f"; done && git push`. Every simple command inside is still evaluated for security as usual.
 
 So the rule only converts the **ask** case to a deny.
 

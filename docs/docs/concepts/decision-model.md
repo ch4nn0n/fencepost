@@ -11,7 +11,7 @@ Every tool call resolves to exactly one decision: **allow**, **ask**, or **deny*
 
 | Decision | Effect | Reason shown to |
 |----------|--------|-----------------|
-| **allow** | Tool runs. No output (fast path). | — |
+| **allow** | Tool runs. An explicit allow is emitted, suppressing Claude Code's native prompt. | — |
 | **ask** | Claude Code prompts the user to approve. | The user |
 | **deny** | Tool is blocked. | Claude (so it can adapt) |
 
@@ -41,13 +41,13 @@ See **[Tool rules](../configuration/tool-rules.md)** for details.
 The command is parsed into an AST (tree-sitter), normalised, split into its simple commands, and each is evaluated against a richer set of tiers:
 
 ```
-deny  >  checks  >  allow-checks  >  ask  >  allow  >  default
+deny  >  allow-checks  >  ask  >  allow  >  default
 ```
 
 | Tier | Sources (first match wins) |
 |------|----------------------------|
 | **1 · deny** | `bash.deny` (prefix), `bash.checks` (regex), `arguments`(deny), `redirects`(deny), nested-interpreter denies |
-| **2 · allow-checks** | `bash.allowChecks` (regex), `arguments`(allow), `redirects`(allow) — *scoped exceptions* |
+| **2 · allow-checks** | `bash.allowChecks` (regex), `arguments`(allow), `redirects`(allow), nested-interpreter allows (honoured only if no nested ask fired) — *scoped exceptions* |
 | **3 · ask** | `bash.ask` (prefix), `arguments`(ask), `redirects`(ask), interpreter asks |
 | **4 · allow** | `bash.allow` (prefix) |
 | **5 · default** | `config.default` |

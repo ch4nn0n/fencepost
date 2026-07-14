@@ -13,6 +13,9 @@ The fencepost bundle is both the hook engine and a small CLI for inspecting conf
 # Hook mode (default) — reads stdin, writes the decision to stdout.
 node dist/index.js evaluate
 
+# PostToolUse mode: reads stdin, redacts secrets from tool output.
+node dist/index.js posttooluse
+
 # SessionStart mode — reads stdin, writes guidance context.
 node dist/index.js sessionstart
 
@@ -22,11 +25,14 @@ node dist/index.js config
 # Same report, but exit non-zero if there are errors. For CI / pre-commit.
 node dist/index.js verify
 
-# Read the audit log and print an analysis.
-node dist/index.js audit [--path .claude/fencepost/logs/audit.jsonl]
+# Read .claude/fencepost/logs/audit.jsonl (under the current directory)
+# and print an analysis.
+node dist/index.js audit
 ```
 
-`evaluate` and `sessionstart` are what the plugin hooks call. `config`, `verify`, and `audit` are for you.
+Any subcommand also accepts `--verbose`, which turns on debug logging.
+
+`evaluate`, `posttooluse`, and `sessionstart` are what the plugin hooks call (`posttooluse` is wired to the plugin's PostToolUse hook via `hooks/post-tool-use.sh`). `config`, `verify`, and `audit` are for you.
 
 ### `verify` in CI
 
@@ -58,7 +64,7 @@ Each entry:
   "input": "kubectl -n prod delete pod foo",
   "normalised": "kubectl delete pod foo",
   "decision": "ask",
-  "reason": "Command requires approval: kubectl delete",
+  "reason": "Command requires approval",
   "rule": "bash.ask: kubectl delete",
   "tid": "toolu_01"
 }
@@ -66,7 +72,9 @@ Each entry:
 
 - `normalised` appears only for Bash, and only when [normalisation](../configuration/bash-rules.md#normalise--strip-noise-first) changed the command.
 - For non-Bash tools, `input` is a truncated summary of `tool_input`.
+- When a **secrets** rule matched, `input` is a paths-only JSON (`file_path` / `notebook_path`), never the command or content (which contain the secret by definition), and `normalised` is suppressed.
 - `rule` records which config path matched — the basis for dead-rule detection.
+- `secrets` (optional, `{scanner, rules, count}`) is written on PostToolUse redactions: scanner name, matched rule ids, and redaction count, never the values.
 
 :::note Unbounded for now
 The log grows without rotation in v1. If it gets large, truncate or rotate it yourself; size/time-based rotation is future work.
@@ -78,9 +86,9 @@ The plugin registers a Claude Code slash command, **`/audit`**, that reads the l
 
 It reports:
 
-### 1. Effective config (with provenance)
+### 1. Effective config
 
-The fully merged config, showing which file (or preset) each rule came from — so you can see exactly what's active and where it's defined.
+The list of source files (configs and presets) that were merged, followed by a summary of the merged rules: the `default` decision, then each non-empty rule list.
 
 ### 2. Decision frequency
 
@@ -94,12 +102,11 @@ Grouped by tool and decision:
 
 ### 3. Promotion candidates (ask → allow)
 
-Commands or tools you keep approving are surfaced as candidates to promote:
+Commands or tools you keep approving (at least 5 asks) are surfaced as candidates to promote:
 
 ```
-Suggestion: Move `git push` from bash.ask to bash.allow
+- **Add `git push` to bash.allow**
   - Asked 23 times across 8 sessions
-  - Never denied by the user
 ```
 
 ### 4. Bash command breakdown
@@ -108,12 +115,15 @@ The most frequent normalised commands and how they were decided.
 
 ### 5. Dead rules
 
-Rules that never matched any call — likely stale:
+Rules that never matched any call — likely stale. Deny, ask, and allow rules are all checked:
 
 ```
-Warning: These rules have never matched:
-  - bash.deny: "git push --force"  (0 matches)
-  - tools.deny: "mcp__dangerous_*" (0 matches)
+## Dead Rules
+
+These rules have never matched any tool call in the audit log:
+
+- `bash.deny: git push --force`
+- `tools.deny: mcp__dangerous_*`
 ```
 
 ### 6. Suggested YAML
@@ -122,9 +132,10 @@ Copy-paste-ready snippets:
 
 ```yaml
 # Suggested additions to bash.allow:
-allow:
-  - bun test     # asked 28 times, always approved
-  - git fetch    # asked 15 times, always approved
+bash:
+  allow:
+    - bun test  # asked 28 times
+    - git fetch  # asked 15 times
 ```
 
 The loop is: run a while, `/audit`, promote the safe asks, prune the dead rules, tighten anything noisy — and repeat.

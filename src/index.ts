@@ -73,8 +73,7 @@ async function runEvaluate(): Promise<void> {
         alternative: "Tell the user to fix the fencepost config (run `fencepost verify` to see all errors).",
         matchedInput: input.tool_name,
       };
-      const out = formatOutput(denied);
-      if (out) process.stdout.write(JSON.stringify(out) + "\n");
+      process.stdout.write(JSON.stringify(formatOutput(denied)) + "\n");
       process.exit(0);
     }
 
@@ -126,13 +125,11 @@ async function runEvaluate(): Promise<void> {
       manualRunCommand = String((input.tool_input as Record<string, unknown>)["command"] ?? "") || undefined;
     }
 
-    // Write decision to stdout. If we rewrote the input, surface it via
-    // updatedInput so the tool runs against the redirected path.
+    // Write the decision to stdout — always, including allow: an explicit
+    // allow suppresses Claude Code's native prompt, empty stdout would not.
+    // If we rewrote the input, updatedInput carries the redirected path.
     const output = formatOutput(result, changed ? effectiveInput : undefined, manualRunCommand);
-    if (output) {
-      process.stdout.write(JSON.stringify(output) + "\n");
-    }
-    // No output = allow (Claude Code interprets empty stdout as allow)
+    process.stdout.write(JSON.stringify(output) + "\n");
 
     process.exit(0);
   } catch (err) {
@@ -144,7 +141,7 @@ async function runEvaluate(): Promise<void> {
         reason: "Fencepost hit an unexpected error and could not check this command.",
         matchedInput: "",
       });
-      if (out) process.stdout.write(JSON.stringify(out) + "\n");
+      process.stdout.write(JSON.stringify(out) + "\n");
     }
     process.exit(0);
   }

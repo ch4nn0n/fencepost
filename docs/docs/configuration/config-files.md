@@ -41,21 +41,22 @@ tools:
 
 ## conf.d directory
 
-As rules grow, split them by domain. fencepost loads every `*.yaml`/`*.yml` in `.claude/fencepost/`, sorted alphabetically, and merges them into one config:
+As rules grow, split them by domain. fencepost loads every `*.yaml`/`*.yml` in `.claude/fencepost/config/`, sorted alphabetically, and merges them into one config:
 
 ```
 .claude/
   fencepost/
-    00-base.yaml      # import, default, onError
-    10-tools.yaml     # general tool rules
-    20-bash-core.yaml # rm, chmod, …
-    30-kubectl.yaml   # kubernetes rules
-    50-git.yaml       # git rules
+    config/
+      00-base.yaml      # import, default, onError
+      10-tools.yaml     # general tool rules
+      20-bash-core.yaml # rm, chmod, …
+      30-kubectl.yaml   # kubernetes rules
+      50-git.yaml       # git rules
 ```
 
 Numeric prefixes are just a convention for ordering — not required. Each file can contain **any subset** of the schema; it only needs to define the sections it cares about:
 
-```yaml title=".claude/fencepost/30-kubectl.yaml"
+```yaml title=".claude/fencepost/config/30-kubectl.yaml"
 tools:
   bash:
     normalise:
@@ -77,12 +78,12 @@ Whether merging conf.d files or layering presets under your config, the rule is 
 
 | Kind | Merge behaviour |
 |------|-----------------|
-| **Arrays** (`tools.allow`, `bash.deny`, `bash.checks`, …) | **Concatenated** — all rules from all files apply. |
-| **Scalars** (`default`, `onError`) | **Last wins** — a later file overrides an earlier one. |
-| **Blocks** (`guidance`, `redirect`) | **Block-level last-wins** — the whole block from the last file that sets it. |
-| **`bash.discourageChaining`** | Scalar that only overrides when *explicitly* set, so `false` in one file isn't clobbered by a later file that omits it. |
+| **Arrays** (`tools.allow`, `bash.deny`, `bash.checks`, …) | **Concatenated**: all rules from all files apply. |
+| **Scalars** (`default`, `onError`, `bash.discourageChaining`, `bash.offerManualRun`) | **Set-wins**: the last file that *explicitly* sets the value wins; a file that omits it inherits the earlier value, so `discourageChaining: false` in one file isn't clobbered by a later file that says nothing. |
+| **Blocks** (`guidance`, `redirect`) | **Block-level last-wins**: the whole block from the last file that sets it. |
+| **`secrets`** | **Field-by-field**: scalar fields are set-wins, and the `allow` lists (`paths`, `rules`) concatenate. |
 
-In short: **scalars = last wins, arrays = concatenate.** Duplicate entries in concatenated arrays are harmless — a command matching two `allow` rules is still just allowed.
+In short: **scalars = set-wins, arrays = concatenate.** Duplicate entries in concatenated arrays are harmless — a command matching two `allow` rules is still just allowed.
 
 :::tip Imports merge as the base
 [Presets](../presets.md) you `import:` are merged *first*, as a base layer; your own config is applied **on top**, so your rules and your `default` always win. Tier precedence (`deny > checks > ask > allow`) then decides outcomes at evaluation time.

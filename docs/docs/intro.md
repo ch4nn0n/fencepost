@@ -6,7 +6,7 @@ description: What fencepost is and why you'd run it in front of Claude Code.
 
 # Introduction
 
-**fencepost** is a configurable permission gate for [Claude Code](https://docs.claude.com/en/docs/claude-code). It installs as a plugin and runs on the `PreToolUse` hook, so it sees **every tool call Claude tries to make** before it happens, and evaluates it against a YAML rule set you control.
+**fencepost** is a configurable permission gate for [Claude Code](https://docs.claude.com/en/docs/claude-code). It installs as a plugin and registers three hooks: `PreToolUse` sees **every tool call Claude tries to make** before it happens and evaluates it against a YAML rule set you control, `PostToolUse` redacts secrets from tool output, and `SessionStart` injects session guidance.
 
 For each call it returns one of three decisions:
 
@@ -42,11 +42,11 @@ Claude Code  ──tool call──▶  PreToolUse hook  ──▶  fencepost
                                           allow │ ask │ deny
 ```
 
-fencepost ships as a small JS bundle (~280 KB plus the tree-sitter grammars) that runs on Node or Bun — no build step for users, no large binary to download, and the same code on every platform.
+fencepost ships as a small JS bundle (~300 KB, plus about 2.7 MB of tree-sitter wasm grammars) that runs on Node or Bun — no build step for users, no large binary to download, and the same code on every platform.
 
 ## Where to go next
 
-- **[Installation](./getting-started/installation.md)** — add the plugin and build the binary.
+- **[Installation](./getting-started/installation.md)** — add the plugin from the marketplace.
 - **[Quick start](./getting-started/quick-start.md)** — a working config in two minutes.
 - **[Permission modes](./concepts/permission-modes.md)** — why to run Claude in `bypassPermissions` so fencepost is the sole gate.
 - **[The decision model](./concepts/decision-model.md)** — how the tiers resolve.

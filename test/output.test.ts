@@ -27,7 +27,9 @@ describe("formatOutput manual-run offer (feature 23)", () => {
   });
 
   it("does not add a manual-run offer to allow/ask", () => {
-    expect(formatOutput({ decision: "allow", reason: "ok" })).toBeNull();
+    const allow = formatOutput({ decision: "allow", reason: "ok" });
+    expect(allow.hookSpecificOutput.permissionDecision).toBe("allow");
+    expect(allow.hookSpecificOutput.additionalContext).toBeUndefined();
     const ask = formatOutput({ decision: "ask", reason: "approve?" }, undefined, "rm -rf x");
     expect(ask?.hookSpecificOutput.additionalContext).toBeUndefined();
   });
