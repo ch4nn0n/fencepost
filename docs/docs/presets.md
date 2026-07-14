@@ -26,6 +26,19 @@ tools:
 
 Each name resolves to `<presets-dir>/<name>.yaml`. Presets deliberately **do not set `default`** — that belongs to your config.
 
+### Enable everything with `all`
+
+The special name `all` expands to **every bundled preset**, so you don't have to list them one by one:
+
+```yaml title=".claude/fencepost.yaml"
+import:
+  - all
+
+default: ask
+```
+
+It's deduped against any presets you also name explicitly (`[git, all]` loads `git` once), and your own config still layers on top. Note that `all` **broadens what's allowed** — it silently allows every tool the bundled presets cover (`kubectl`, `helm`, `ansible-playbook`, browser control, web fetches, and so on). Prefer naming the presets you actually use unless you genuinely want the full surface.
+
 ## How merging works
 
 ```

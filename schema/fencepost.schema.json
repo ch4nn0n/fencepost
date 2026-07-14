@@ -18,7 +18,7 @@
     },
     "import": {
       "type": "array",
-      "description": "Bundled preset names to merge in as a base layer, in order. Your own config is applied on top. Names are bare identifiers, never paths.",
+      "description": "Bundled preset names to merge in as a base layer, in order. Your own config is applied on top. Names are bare identifiers, never paths. The special name 'all' expands to every bundled preset.",
       "items": { "type": "string", "pattern": "^[a-zA-Z0-9_-]+$" }
     },
     "default": {

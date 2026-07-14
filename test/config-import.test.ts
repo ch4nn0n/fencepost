@@ -60,6 +60,30 @@ describe("import directive", () => {
     expect(config.tools.bash.ask).toContain("helm upgrade");
   });
 
+  it("the 'all' token expands to every bundled preset", async () => {
+    const tmp = await projectWithConfig("import:\n  - all\ndefault: ask\n");
+    const config = await resolveConfig(tmp);
+
+    // Rules from presets spread across the set are all present.
+    expect(config.tools.bash.allow).toContain("git status"); // git
+    expect(config.tools.bash.ask).toContain("kubectl apply"); // kubernetes
+    expect(config.tools.bash.ask).toContain("helm upgrade"); // helm
+    expect(config.tools.allow).toContain("Read"); // claude
+
+    // Every bundled preset became a source, deduped against the user file.
+    const presetFiles = (await readdir(PRESETS_DIR)).filter((f) => f.endsWith(".yaml"));
+    for (const f of presetFiles) {
+      expect(config._sources.some((s) => s.endsWith(f))).toBe(true);
+    }
+  });
+
+  it("dedupes 'all' against explicitly listed presets", async () => {
+    const tmp = await projectWithConfig("import:\n  - git\n  - all\ndefault: ask\n");
+    const config = await resolveConfig(tmp);
+    const gitSources = config._sources.filter((s) => s.endsWith("git.yaml"));
+    expect(gitSources).toHaveLength(1);
+  });
+
   it("ignores unknown preset names without failing", async () => {
     const tmp = await projectWithConfig("import:\n  - git\n  - does-not-exist\ndefault: ask\n");
     const config = await resolveConfig(tmp);
