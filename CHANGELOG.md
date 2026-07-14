@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/ch4nn0n/fencepost/compare/v0.6.0...v0.7.0) (2026-07-14)
+
+
+### Features
+
+* **config:** add 'all' import token to enable every bundled preset ([c6d4929](https://github.com/ch4nn0n/fencepost/commit/c6d4929b83c9e6364a33993dfd954842a6b431e1))
+
 ## [0.6.0](https://github.com/ch4nn0n/fencepost/compare/v0.5.0...v0.6.0) (2026-07-14)
 
 
