@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/ch4nn0n/fencepost/compare/v0.5.0...v0.6.0) (2026-07-14)
+
+
+### Features
+
+* **presets:** allow TaskStop in claude preset ([ca96a84](https://github.com/ch4nn0n/fencepost/commit/ca96a84c7bf3e8f9a8e7c44e1531834714c382fc))
+
+
+### Bug Fixes
+
+* emit explicit allow and align docs with code ([0993947](https://github.com/ch4nn0n/fencepost/commit/0993947bdb99b1189a7c4413cacd14086dee5d25))
+
 ## [0.5.0](https://github.com/ch4nn0n/fencepost/compare/v0.4.1...v0.5.0) (2026-07-10)
 
 
