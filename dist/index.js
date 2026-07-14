@@ -6047,10 +6047,36 @@ async function resolvePreset2(name2, importedFrom) {
   note2("warning", importedFrom, `imported preset not found: ${name2}`);
   return null;
 }
+async function listPresetNames2() {
+  for (const dir of presetSearchDirs2()) {
+    try {
+      const names = (await readdir2(dir)).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml")).map((f) => f.replace(/\.ya?ml$/, "")).sort();
+      if (names.length)
+        return names;
+    } catch {}
+  }
+  return [];
+}
+async function expandImports2(names) {
+  if (!names.includes("all"))
+    return names;
+  const everyPreset = await listPresetNames2();
+  const out2 = [];
+  const seen = new Set;
+  for (const name2 of names) {
+    for (const n of name2 === "all" ? everyPreset : [name2]) {
+      if (!seen.has(n)) {
+        seen.add(n);
+        out2.push(n);
+      }
+    }
+  }
+  return out2;
+}
 async function loadImports2(names, importedFrom) {
   let merged = DEFAULT_CONFIG2;
   const sources = [];
-  for (const name2 of names) {
+  for (const name2 of await expandImports2(names)) {
     const path = await resolvePreset2(name2, importedFrom);
     if (!path)
       continue;
@@ -7045,10 +7071,36 @@ async function resolvePreset(name2, importedFrom) {
   note("warning", importedFrom, `imported preset not found: ${name2}`);
   return null;
 }
+async function listPresetNames() {
+  for (const dir of presetSearchDirs()) {
+    try {
+      const names = (await readdir(dir)).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml")).map((f) => f.replace(/\.ya?ml$/, "")).sort();
+      if (names.length)
+        return names;
+    } catch {}
+  }
+  return [];
+}
+async function expandImports(names) {
+  if (!names.includes("all"))
+    return names;
+  const everyPreset = await listPresetNames();
+  const out2 = [];
+  const seen = new Set;
+  for (const name2 of names) {
+    for (const n of name2 === "all" ? everyPreset : [name2]) {
+      if (!seen.has(n)) {
+        seen.add(n);
+        out2.push(n);
+      }
+    }
+  }
+  return out2;
+}
 async function loadImports(names, importedFrom) {
   let merged = DEFAULT_CONFIG;
   const sources = [];
-  for (const name2 of names) {
+  for (const name2 of await expandImports(names)) {
     const path = await resolvePreset(name2, importedFrom);
     if (!path)
       continue;

@@ -581,14 +581,52 @@ async function resolvePreset(name: string, importedFrom: string): Promise<string
   return null;
 }
 
+/** All bundled preset base names (no extension), from the first search dir that has any. */
+async function listPresetNames(): Promise<string[]> {
+  for (const dir of presetSearchDirs()) {
+    try {
+      const names = (await readdir(dir))
+        .filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"))
+        .map((f) => f.replace(/\.ya?ml$/, ""))
+        .sort();
+      if (names.length) return names;
+    } catch {
+      /* dir absent; try the next candidate */
+    }
+  }
+  return [];
+}
+
+/**
+ * Expand the special `all` token to every bundled preset (sorted), so a single
+ * `import: [all]` enables the lot. Other names are kept in place, and the result
+ * is deduped so e.g. `[git, all]` never loads `git` twice.
+ */
+async function expandImports(names: string[]): Promise<string[]> {
+  if (!names.includes("all")) return names;
+  const everyPreset = await listPresetNames();
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const name of names) {
+    for (const n of name === "all" ? everyPreset : [name]) {
+      if (!seen.has(n)) {
+        seen.add(n);
+        out.push(n);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Load and merge the named presets into a single base config. Presets are
- * merged in listed order; nested imports inside a preset are ignored.
+ * merged in listed order; nested imports inside a preset are ignored. The
+ * `all` token expands to every bundled preset (see expandImports).
  */
 async function loadImports(names: string[], importedFrom: string): Promise<{ config: FencepostConfig; sources: string[] }> {
   let merged = DEFAULT_CONFIG;
   const sources: string[] = [];
-  for (const name of names) {
+  for (const name of await expandImports(names)) {
     const path = await resolvePreset(name, importedFrom);
     if (!path) continue;
     const loaded = await loadYamlFile(path);
