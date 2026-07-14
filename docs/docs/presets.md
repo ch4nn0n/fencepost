@@ -63,7 +63,7 @@ import DocCardList from '@theme/DocCardList';
 
 The one most projects want. It makes routine work with Claude Code quiet:
 
-**Allows the built-in tools** — `Read`, `Glob`, `Grep`, `Edit`, `Write`, `NotebookEdit`, `TodoWrite`, `Task`, `ExitPlanMode`, `BashOutput`, `KillShell`. Two deliberate exclusions:
+**Allows the built-in tools**: `Read`, `Glob`, `Grep`, `Edit`, `Write`, and the rest of the read/search/task tools (the [generated preset page](./presets/claude.md) has the full, always-current list). Two deliberate exclusions:
 
 - **`Bash`** is absent — fencepost always routes Bash through the [command pipeline](./configuration/bash-rules.md), so listing it would do nothing.
 - **`WebFetch` / `WebSearch`** are not allowed — they reach external services, so they fall through to your `default`. Add the `claude-web` preset if you want them.

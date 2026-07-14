@@ -3,8 +3,8 @@
 // Bash is always evaluated through this parse. extractBash() returns the flat
 // list of simple commands actually executed (including inside loops,
 // conditionals, pipelines, and command substitutions), each with its name,
-// (unquoted) arguments, attached redirections, and heredoc body. Fail-open: any
-// error returns ok:false and the caller fails open.
+// (unquoted) arguments, attached redirections, and heredoc body. On any error
+// it returns ok:false and the caller applies the onError posture (default ask).
 
 import { logger } from "../logger.js";
 import { readWasm } from "../wasm.js";

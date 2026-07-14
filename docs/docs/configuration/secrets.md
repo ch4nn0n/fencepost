@@ -15,21 +15,13 @@ Fencepost deliberately does **not** maintain its own detection rules. It shells 
 | Scanner | Speed (see [below](#scanner-compatibility-and-performance)) | Redaction quality | Notes |
 |---|---|---|---|
 | [gitleaks](https://github.com/gitleaks/gitleaks) **(recommended)** | fastest (~0.1 s) | Exact spans | Needs the `stdin` command (v8.19.3+). `brew install gitleaks` |
-| [betterleaks](https://github.com/betterleaks/betterleaks) | ~1.2 s | Exact spans | gitleaks successor by the same team (re2/aho-corasick, fewer false positives), but ~10× higher per-call startup. Drop-in compatible. |
+| [betterleaks](https://github.com/betterleaks/betterleaks) | slower cold start than gitleaks | Exact spans | gitleaks successor by the same team (re2/aho-corasick, fewer false positives), but higher per-call startup. Drop-in compatible. |
 | [trufflehog](https://github.com/trufflesecurity/trufflehog) | slowest (seconds) | Exact spans | Runs with `--no-verification` (no network calls). `brew install trufflehog` |
 | [detect-secrets](https://github.com/Yelp/detect-secrets) | ~0.6 s | Whole line | Reports only line numbers, so the entire flagged line is replaced. `pipx install detect-secrets` |
 
 ### Recommended scanner
 
-**gitleaks is the recommended scanner** and the default, for three reasons:
-
-1. **Per-call latency.** Fencepost runs the scanner on every gated tool call as a fresh process, so startup cost dominates. gitleaks scans in ~0.1 s; betterleaks ~1.2 s, detect-secrets ~0.6 s, trufflehog several seconds (see [latency](#latency)). On a per-tool-call hook, gitleaks' ~10× lead over betterleaks matters more than anything else.
-2. **Ubiquity.** gitleaks is packaged in Homebrew, apt, and most CI images; it is the easiest to install on any machine.
-3. **Maturity.** It is widely deployed and battle-tested.
-
-If you have no preference, install gitleaks and leave `scanner: auto`.
-
-**[betterleaks](https://github.com/betterleaks/betterleaks)** is a fully supported drop-in alternative — a gitleaks successor from the same team with re2/aho-corasick matching and lower false-positive rates. Its trade-off today is a higher per-invocation startup (~1.2 s here), which is why it is not the default for a per-call hook. If its accuracy improvements matter more to you than latency, pin `scanner: betterleaks` (fencepost never enables its network secret-validation, so scans stay offline).
+**gitleaks is the recommended scanner** and the default: each scan spawns a fresh process, so startup cost dominates, and gitleaks is roughly an order of magnitude faster than the alternatives (measured numbers and trade-offs in [latency](#latency) below). If you have no preference, install gitleaks and leave `scanner: auto`.
 
 With `scanner: auto` (the default), fencepost uses the first installed scanner in this order: **gitleaks → betterleaks → trufflehog → detect-secrets**. Pin `scanner: <name>` to force a specific one (which also makes it [fail closed](#failure-posture) if unavailable).
 
@@ -59,6 +51,8 @@ secrets:
   scanInputs: true     # PreToolUse: deny secret-bearing inputs
   scanOutputs: true    # PostToolUse: redact secrets from output
   inputTools: [Write, Edit, NotebookEdit, Bash]
+                       # only these four tools have scannable input fields;
+                       # listing any other tool here is a silent no-op
   outputTools: [Read, Bash, Grep, WebFetch]
   allow:
     paths:             # path globs exempt from INPUT scanning
@@ -67,9 +61,11 @@ secrets:
     rules:             # "<scanner>:<rule>" globs to ignore everywhere
       - "gitleaks:generic-api-key"
   maxScanBytes: 5242880  # 5 MiB; larger output is withheld (see failure posture)
-  timeoutMs: 10000       # per scanner invocation; on timeout the scan is skipped
-                         # (generous so trufflehog can finish; gitleaks/detect-secrets
-                         # return in well under a second)
+  timeoutMs: 10000       # per scanner invocation; a timeout follows the failure
+                         # posture below (input: skipped with auto, denied if
+                         # pinned; output: withheld in both modes). Generous so
+                         # trufflehog can finish; gitleaks/detect-secrets
+                         # return in well under a second.
 ```
 
 The `secrets` block merges **field by field**: a preset can set `enabled: true` and your config can add `allow.paths` entries without re-declaring (or accidentally disabling) the rest. `allow.paths` and `allow.rules` concatenate across files; scalars are last-set-wins.
@@ -139,7 +135,7 @@ _Measured on Linux x86_64, 2026-06-14 (median of 8 runs, warm-up dropped). Regen
 Takeaways:
 
 - **gitleaks is the clear default** — about an order of magnitude faster than the others and effectively free per call.
-- **betterleaks reports the same exact spans as gitleaks** but currently carries a much higher per-call startup (~1.2 s), so it sits behind gitleaks in the `auto` order.
+- **betterleaks reports the same exact spans as gitleaks** but carries a noticeably slower cold start (not measured on this host; see the table note above), so it sits behind gitleaks in the `auto` order.
 - **The cost is per-invocation startup, not input size** — every scanner is roughly flat from 1 KB to 50 KB, because each scan spawns a fresh process.
 - **trufflehog's cost is detector initialization**; it stays in the multi-second range even for tiny inputs. The exact figure depends on the platform and trufflehog's self-update check.
 - The **PreToolUse hook has a 5 s timeout** (the PostToolUse hook has 15 s). gitleaks and detect-secrets finish comfortably within both. **trufflehog can exceed the 5 s input-scanning window**, so prefer gitleaks (or detect-secrets) for input scanning, and reserve trufflehog for output scanning. The default `secrets.timeoutMs` is 10 s so trufflehog can complete on the output path.

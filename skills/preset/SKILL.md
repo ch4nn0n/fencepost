@@ -40,7 +40,7 @@ Anything you leave unlisted falls through to the user's `default`; prefer that o
 
 ## 4. Write into the user's config
 
-- Target `.claude/fencepost.yaml` (create it if absent). If the project already uses a `.claude/fencepost/conf.d/` directory, add a focused file there instead (e.g. `conf.d/<tool>.yaml`).
+- Target `.claude/fencepost.yaml` (create it if absent). If the project already uses a `.claude/fencepost/config/` directory, add a focused file there instead (e.g. `config/<tool>.yaml`).
 - **Merge** into the existing sections; do not clobber rules the user already has.
 - **Never set `default`** — that is the user's to own.
 - CLI rules go under `tools.bash` (`allow` / `ask` / `checks` / `normalise`). MCP rules go under `tools` (`allow` / `ask` / `deny`).

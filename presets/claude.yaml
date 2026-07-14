@@ -34,6 +34,7 @@ tools:
     - Skill
     - ToolSearch
     - Agent
+    - TaskStop
 
   bash:
     # Structured rules (feature 20) over the parsed command.

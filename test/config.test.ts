@@ -60,6 +60,21 @@ describe("resolveConfig", () => {
     expect(config.tools.deny).toHaveLength(1);
   });
 
+  it("keeps an explicit default when a later layer omits it", async () => {
+    const { mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+
+    const tmp = await mkdtemp(join(tmpdir(), "fencepost-test-"));
+    const confDir = join(tmp, ".claude", "fencepost", "config");
+    await mkdir(confDir, { recursive: true });
+    await writeFile(join(confDir, "00-base.yaml"), "default: deny\n");
+    await writeFile(join(confDir, "10-tools.yaml"), "tools:\n  allow:\n    - Read\n");
+
+    const config = await resolveConfig(tmp);
+    expect(config.default).toBe("deny");
+  });
+
   it("returns defaults when no config found", async () => {
     const { mkdtemp } = await import("node:fs/promises");
     const { join } = await import("node:path");

@@ -40,7 +40,7 @@ tools:
 |------|-------------------|
 | `write` | `>`, `>|`, `&>`, and (as a subtype) `>>`, `&>>` |
 | `append` | only `>>`, `&>>` |
-| `read` | `<`, `<<`, `<<<` |
+| `read` | `<` only. Heredocs (`<<`) and herestrings (`<<<`) have no file target, so no rule can fire on them. |
 | `any` | all redirects |
 
 **Target** — provide **exactly one** matcher:
@@ -82,7 +82,7 @@ tools:
 | `anyArgOutside: [roots]` | any path-like arg resolves outside all roots |
 | `allArgsInside: [roots]` | there's ≥1 path-like arg and **every** one is under some root |
 | `anyArgMatches: <regex>` | any raw arg matches the regex |
-| `allArgsMatch: <regex>` | every raw arg matches the regex |
+| `allArgsMatch: <regex>` | there's ≥1 arg and **every** raw arg matches the regex |
 
 ## Path semantics
 
@@ -127,11 +127,11 @@ tools:
         description: "Writing outside the sandbox can clobber files."
 ```
 
-This is exactly what the [`claude` preset](../presets.md#claude) ships — correct for multi-target commands in a way the old single-path regex couldn't be.
+The [`claude` preset](../presets.md#claude) ships a policy in this shape (an `allArgsInside` allow covering the common file commands, plus the write-outside redirect deny), correct for multi-target commands in a way the old single-path regex couldn't be.
 
 ## Validation
 
-- `redirects[]`: `mode` in the enum; **exactly one** of `outside`/`glob`; `decision` in the enum; `description` required for deny/ask; invalid `glob` skipped with a warning.
+- `redirects[]`: `mode` in the enum; **exactly one** of `outside`/`glob`; `decision` in the enum; invalid rules are skipped with a warning. `description` and `alternative` are always optional.
 - `arguments[]`: `command` required; **exactly one** predicate; `decision` required; invalid regex skipped with a warning.
 
 Both lists merge by concatenation, so presets compose cleanly.

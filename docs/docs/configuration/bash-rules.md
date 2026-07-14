@@ -41,7 +41,7 @@ tools:
           - '--context \S+'
 ```
 
-Now `kubectl -n prod delete pod foo` normalises to `kubectl delete pod foo`, so your `kubectl delete` rule matches regardless of namespace flags. The normalised form is what every tier sees (and what the [audit log](../reference/cli-and-audit.md) records when it differs from the original).
+Now `kubectl -n prod delete pod foo` normalises to `kubectl delete pod foo`, so your `kubectl delete` rule matches regardless of namespace flags. The normalised form is what the string and regex tiers on this page match (`deny`, `checks`, `allowChecks`, `ask`, `allow`), and what the [audit log](../reference/cli-and-audit.md) records when it differs from the original. The [structured rules](./structured-bash-rules.md) and [interpreter analysis](./interpreters.md) work on the raw parsed arguments, un-normalised.
 
 ## `deny` and `allow` and `ask` — prefix lists {#prefix-matching}
 
@@ -112,7 +112,7 @@ tools:
 
 ## Compound commands
 
-A command joined with `&&`, `||`, `;`, or `|` is split into simple commands; each is evaluated, and the **most restrictive** decision wins. The denial reason names the specific offending sub-command. See [discourage chaining](./guidance-and-chaining.md) for how *ask*-level chains are converted to denials that ask Claude to run each step separately.
+A command joined with `&&`, `||`, `;`, or `|` is split into simple commands; each is evaluated, and the **most restrictive** decision wins. A denial carries the matched rule's reason plus guidance to break the command into separate tool calls (the specific offending sub-command isn't named in the reason, but it is recorded in the audit log; an *ask* reason does quote the sub-command that needs approval). See [discourage chaining](./guidance-and-chaining.md) for how *ask*-level chains are converted to denials that ask Claude to run each step separately.
 
 ## Manual-run escape hatch
 

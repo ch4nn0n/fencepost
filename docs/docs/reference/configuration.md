@@ -45,7 +45,7 @@ secrets: { ... }
 | Key | Type | Default | Merge | Notes |
 |-----|------|---------|-------|-------|
 | `import` | list of preset names | `[]` | n/a | Bare identifiers only (`[a-zA-Z0-9_-]+`), resolved against the bundled [presets](../presets.md). Nested imports inside a preset are ignored. |
-| `default` | `allow` \| `deny` \| `ask` | `ask` | last wins | Decision when no rule matches. |
+| `default` | `allow` \| `deny` \| `ask` | `ask` | set-wins | Decision when no rule matches. The last explicitly set value wins; a layer that omits `default` inherits it (mirrors `onError`). |
 | `onError` | `allow` \| `deny` \| `ask` | `ask` | set-wins | Used when fencepost runs but can't reach a decision (e.g. unparseable Bash). A broken *config* always fails closed regardless. See [Failure posture](../concepts/failure-posture.md). |
 | `tools` | object | see below | per-field | Tool and Bash rules. |
 | `guidance` | object | see below | block last-wins | SessionStart guidance. |
@@ -75,7 +75,7 @@ String and regex rules over the normalised command — see [Bash rules](../confi
 | `bash.allowChecks` | list of regexes | `[]` | concat | Smart allow: regex over the whole normalised command, so an anchored pattern can confine an allow to a path. Evaluated above `ask`/`allow`. |
 | `bash.ask` | list of command prefixes | `[]` | concat | |
 | `bash.allow` | list of command prefixes | `[]` | concat | |
-| `bash.discourageChaining` | boolean | `true` | set-wins | Deny `&&`/`;`/`\|\|` chains that would need approval, with guidance to run the parts separately. Pipes are exempt. See [Guidance & chaining](../configuration/guidance-and-chaining.md). |
+| `bash.discourageChaining` | boolean | `true` | set-wins | Deny `&&`/`;`/`\|\|` chains that would need approval, with guidance to run the parts separately. Pipes and control-flow constructs (`if`, `for`, `while`, ...) are exempt: any control-flow node exempts the whole command. See [Guidance & chaining](../configuration/guidance-and-chaining.md). |
 | `bash.offerManualRun` | boolean | `true` | set-wins | On deny, offer the verbatim command for the user to run via `! <command>`. |
 | `bash.redirects` | list of redirect rules | `[]` | concat | See below. |
 | `bash.arguments` | list of argument rules | `[]` | concat | See below. |

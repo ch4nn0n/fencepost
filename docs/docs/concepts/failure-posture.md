@@ -19,7 +19,7 @@ A permission gate has to decide what happens when *it* can't do its job. fencepo
 onError: ask   # allow | ask | deny  (default: ask)
 ```
 
-This fires when fencepost genuinely cannot evaluate a command — the bash parser can't extract it, or an unexpected exception is thrown mid-evaluation.
+This fires when fencepost genuinely cannot evaluate a command: the bash parser can't extract it, an unexpected exception is thrown mid-evaluation, `xargs` is used with a flag fencepost doesn't recognise (so it can't tell where the inner command starts), or wrappers (`sh -c`, `xargs`, and friends) nest more than 8 levels deep.
 
 - **`ask`** (default) — optimised for interactive use. When fencepost can't check something, *you* decide.
 - **`allow`** — for headless/CI runs where no one can answer a prompt, so an un-checkable command doesn't block the pipeline.

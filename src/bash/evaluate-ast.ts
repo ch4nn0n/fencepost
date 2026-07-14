@@ -6,7 +6,7 @@
 //   deny > smart-allow > ask > allow(prefix) > default
 //
 // The most restrictive command decision wins for a compound. Parse failure
-// fails open (allow), preserving the project's fail-open posture.
+// applies the configured onError posture (default ask).
 
 import { extractBash } from "./ast.js";
 import { analyseInterpreter } from "./ast-interp.js";

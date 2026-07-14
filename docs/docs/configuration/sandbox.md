@@ -48,34 +48,16 @@ When the input changed, the decision JSON carries `updatedInput` so the tool run
 ```yaml
 redirect:
   tmp: true              # rewrite /tmp → tmpTarget (default false at the core level)
-  tmpTarget: /tmp/claude # destination dir — must be directly under /tmp
+  tmpTarget: /tmp/claude # destination dir, must start with /tmp/
 ```
 
-`redirect` is block-level last-wins. The core default is **off**; the [`claude` preset](../presets.md#claude) turns it on. Only targets directly under `/tmp` are supported — any other target makes redirection a no-op.
+`redirect` is block-level last-wins. The core default is **off**; the [`claude` preset](../presets.md#claude) turns it on. The target must start with `/tmp/` (nested targets like `/tmp/agents/claude` work); any other target makes redirection a no-op.
 
 ## Scoped destructive permissions
 
-The point of one sandbox dir is that you can safely allow destructive operations *inside it*. The recommended way is [structured `arguments` rules](./structured-bash-rules.md), which are correct for multi-target commands:
+The point of one sandbox dir is that you can safely allow destructive operations *inside it*. The recommended way is [structured `arguments` rules](./structured-bash-rules.md), which are correct for multi-target commands: see [A complete sandbox policy](./structured-bash-rules.md#a-complete-sandbox-policy) for the full rule set.
 
-```yaml
-tools:
-  bash:
-    arguments:
-      # Allow rm only when EVERY path arg is under the sandbox.
-      - { command: rm, allArgsInside: ["/tmp/claude"], decision: allow }
-      # Otherwise ask before mutating outside it.
-      - command: "rm|rmdir|mkdir|touch"
-        anyArgOutside: ["/tmp/claude", "."]
-        decision: ask
-    redirects:
-      # Never redirect output outside the sandbox/project.
-      - mode: write
-        outside: ["/tmp/claude", "."]
-        decision: deny
-        description: "Writing outside the sandbox can clobber files."
-```
-
-`rm -rf /tmp/claude/build` is allowed; `rm -rf /tmp/claude/build /etc` is **not** (one argument escapes), so it falls through to `ask`/`default`.
+With those rules, `rm -rf /tmp/claude/build` is allowed; `rm -rf /tmp/claude/build /etc` is **not** (one argument escapes), so it falls through to `ask`/`default`.
 
 :::note allowChecks alternative
 An older approach uses a `$`-anchored [`allowChecks`](./bash-rules.md#allowchecks--smart-allow-scoped-exceptions) regex. It only confines a *single* target, so two-path commands (`cp`, `mv`) are intentionally excluded. Prefer the structured `arguments` rules above; the `claude` preset has migrated to them.

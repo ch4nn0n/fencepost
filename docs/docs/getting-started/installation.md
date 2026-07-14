@@ -5,7 +5,7 @@ description: Install fencepost as a Claude Code plugin.
 
 # Installation
 
-fencepost ships as a Claude Code plugin: a manifest that registers the hooks, a small committed JS bundle, the tree-sitter grammars, and a set of presets. There's **no build step for users** and no 100 MB binary to download.
+fencepost ships as a Claude Code plugin: a manifest that registers the hooks, a small prebuilt JS bundle (committed on the `dist` branch that installs are served from, while `main` stays source-only), the tree-sitter grammars, and a set of presets. There's **no build step for users** and no 100 MB binary to download.
 
 ## Requirements
 
@@ -21,28 +21,22 @@ fencepost's repository doubles as a single-plugin marketplace, so you can add it
 /plugin install fencepost@fencepost
 ```
 
-That's it — the plugin is fetched and cached, the `PreToolUse` and `SessionStart` hooks register, and the gate is live on the next tool call. Update later with `/plugin marketplace update fencepost`.
+That's it — the plugin is fetched and cached, the `PreToolUse`, `PostToolUse` and `SessionStart` hooks register, and the gate is live on the next tool call. Update later with `/plugin marketplace update fencepost`.
 
 ## Run Claude with fencepost as the gate (recommended)
 
-fencepost is meant to be your permission layer, so run Claude Code in `bypassPermissions` mode:
-
-```bash
-claude --permission-mode bypassPermissions
-```
-
-This stands down Claude's own permission prompts and lets fencepost's `allow`/`ask`/`deny` decide every call — no double-prompting, and your `fencepost.yaml` is the single source of truth. fencepost's `deny` and `ask` are still enforced in this mode; only the calls fencepost would let through stop prompting.
-
-:::warning Use an isolated environment
-`bypassPermissions` also disables Claude Code's *other* safety nets (protected-path write guards, and it offers no protection against prompt injection), so Claude recommends it only in containers, VMs, or dev containers. With those nets off, fencepost is your sole gate — keep `default`/`onError` set to `ask` or `deny` (never `allow`). See **[Permission modes](../concepts/permission-modes.md)** for the full picture.
-:::
+fencepost is meant to be your permission layer: run Claude Code with `claude --permission-mode bypassPermissions` so its native prompts stand down and fencepost's `allow`/`ask`/`deny` decide every call. See **[Permission modes](../concepts/permission-modes.md)** for why, and for the safety caveats that come with that mode.
 
 ## Try it locally without installing
 
-To test against a clone (for development, or before committing to installing), point Claude Code at the directory (the same `--permission-mode` flag applies):
+To test against a clone (for development, or before committing to installing), build the bundle first (`main` is source-only, so a fresh clone has no `dist/`; this needs [Bun](https://bun.sh)), then point Claude Code at the directory:
 
 ```bash
 git clone https://github.com/ch4nn0n/fencepost.git
+cd fencepost
+bun install
+bun run build     # produces dist/index.js and the wasm grammars
+cd ..
 claude --permission-mode bypassPermissions --plugin-dir ./fencepost
 ```
 
@@ -51,21 +45,26 @@ claude --permission-mode bypassPermissions --plugin-dir ./fencepost
 ```
 fencepost/
 ├── .claude-plugin/
-│   ├── plugin.json          # registers PreToolUse + SessionStart hooks
+│   ├── plugin.json          # registers the PreToolUse, PostToolUse + SessionStart hooks
 │   └── marketplace.json     # lets the repo be added as a marketplace
 ├── hooks/
 │   ├── pre-tool-use.sh      # wrapper → node dist/index.js evaluate
+│   ├── post-tool-use.sh     # wrapper → node dist/index.js posttooluse
 │   └── session-start.sh     # → node dist/index.js sessionstart
 ├── dist/
-│   ├── index.js             # the committed JS bundle (~280 KB)
+│   ├── index.js             # the prebuilt JS bundle (~300 KB)
 │   └── *.wasm               # tree-sitter grammars
 ├── presets/                 # bundled importable rule sets
-└── skills/audit.md          # the /audit slash command
+└── skills/                  # /audit, /preset and /contribute-preset
+    ├── audit/SKILL.md
+    ├── preset/SKILL.md
+    └── contribute-preset/SKILL.md
 ```
 
-The two hooks:
+The three hooks:
 
 - **`PreToolUse`** → evaluates each tool call.
+- **`PostToolUse`** → redacts [secrets](../configuration/secrets.md) from tool output.
 - **`SessionStart`** → injects [session guidance](../configuration/guidance-and-chaining.md) and prepares the `/tmp/claude` sandbox.
 
 The manifest points at thin shell wrappers rather than the bundle directly. Each wrapper finds a runtime, resolves the bundle relative to its own location, and exports `FENCEPOST_PRESETS_DIR` so bundled presets resolve no matter where the plugin is installed:
@@ -75,19 +74,29 @@ The manifest points at thin shell wrappers rather than the bundle directly. Each
 HERE="$(cd "$(dirname "$0")" && pwd)"
 export FENCEPOST_PRESETS_DIR="${FENCEPOST_PRESETS_DIR:-$HERE/../presets}"
 RUNNER="$(command -v node || command -v bun || true)"
-[ -z "$RUNNER" ] && exit 0   # fail open if no runtime is available
+if [ -z "$RUNNER" ]; then
+  echo "fencepost: no 'node' or 'bun' runtime found on PATH; skipping check" >&2
+  exit 0 # fail open: never block Claude Code just because we can't run
+fi
 exec "$RUNNER" "$HERE/../dist/index.js" evaluate
 ```
 
 ## Verify it works
 
-With no config present, fencepost is a no-op (it [fails open](../concepts/failure-posture.md) to `default: ask`). You can run the bundle directly to confirm:
+With no config present, everything falls through to `default: ask` (see [failure posture](../concepts/failure-posture.md)). You can run the bundle directly to confirm:
 
 ```bash
 echo '{"tool_name":"Read","tool_input":{},"session_id":"t","cwd":"/tmp","hook_event_name":"PreToolUse","tool_use_id":"x"}' \
   | node dist/index.js evaluate
-# (no output = allow)
 ```
+
+which prints an explicit `ask` decision:
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Fencepost: 'Read' requires approval."}}
+```
+
+fencepost always emits an explicit decision, even for `allow`: an explicit allow is what suppresses Claude Code's native prompt.
 
 Then add a config and check it compiles cleanly:
 

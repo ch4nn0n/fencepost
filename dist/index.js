@@ -5832,6 +5832,7 @@ function validateConfig2(raw, source) {
     return null;
   }
   const obj = raw;
+  const defaultSet = obj["default"] !== undefined;
   const defaultDecision = obj["default"] ?? "ask";
   if (!isDecision2(defaultDecision)) {
     note2("error", source, `invalid 'default' value: ${JSON.stringify(obj["default"])} (expected allow|deny|ask)`);
@@ -5918,6 +5919,7 @@ function validateConfig2(raw, source) {
   }
   const result = {
     default: defaultDecision,
+    _defaultSet: defaultSet,
     tools: {
       deny,
       ask,
@@ -5985,7 +5987,8 @@ function mergeSecrets2(base, override) {
 }
 function mergeConfigs2(base, override) {
   return {
-    default: override.default,
+    default: override._defaultSet ? override.default : base.default,
+    _defaultSet: override._defaultSet || base._defaultSet,
     onError: override.onError ?? base.onError,
     tools: {
       deny: [...base.tools.deny, ...override.tools.deny],
@@ -6826,6 +6829,7 @@ function validateConfig(raw, source) {
     return null;
   }
   const obj = raw;
+  const defaultSet = obj["default"] !== undefined;
   const defaultDecision = obj["default"] ?? "ask";
   if (!isDecision(defaultDecision)) {
     note("error", source, `invalid 'default' value: ${JSON.stringify(obj["default"])} (expected allow|deny|ask)`);
@@ -6912,6 +6916,7 @@ function validateConfig(raw, source) {
   }
   const result = {
     default: defaultDecision,
+    _defaultSet: defaultSet,
     tools: {
       deny,
       ask,
@@ -6979,7 +6984,8 @@ function mergeSecrets(base, override) {
 }
 function mergeConfigs(base, override) {
   return {
-    default: override.default,
+    default: override._defaultSet ? override.default : base.default,
+    _defaultSet: override._defaultSet || base._defaultSet,
     onError: override.onError ?? base.onError,
     tools: {
       deny: [...base.tools.deny, ...override.tools.deny],
@@ -7260,17 +7266,6 @@ async function evaluate(input, config) {
 
 // src/output.ts
 function formatOutput(result, updatedInput, manualRunCommand) {
-  if (result.decision === "allow") {
-    if (!updatedInput)
-      return null;
-    return {
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "allow",
-        updatedInput
-      }
-    };
-  }
   const output = {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -7278,7 +7273,7 @@ function formatOutput(result, updatedInput, manualRunCommand) {
       permissionDecisionReason: formatReason(result)
     }
   };
-  if (result.decision === "ask" && updatedInput) {
+  if (result.decision !== "deny" && updatedInput) {
     output.hookSpecificOutput.updatedInput = updatedInput;
   }
   if (result.decision === "deny") {
@@ -7582,9 +7577,7 @@ async function runEvaluate() {
         alternative: "Tell the user to fix the fencepost config (run `fencepost verify` to see all errors).",
         matchedInput: input.tool_name
       };
-      const out2 = formatOutput(denied);
-      if (out2)
-        process.stdout.write(JSON.stringify(out2) + `
+      process.stdout.write(JSON.stringify(formatOutput(denied)) + `
 `);
       process.exit(0);
     }
@@ -7616,10 +7609,8 @@ async function runEvaluate() {
       manualRunCommand = String(input.tool_input["command"] ?? "") || undefined;
     }
     const output = formatOutput(result, changed ? effectiveInput : undefined, manualRunCommand);
-    if (output) {
-      process.stdout.write(JSON.stringify(output) + `
+    process.stdout.write(JSON.stringify(output) + `
 `);
-    }
     process.exit(0);
   } catch (err2) {
     logger2.error({ err: err2, onError }, "unhandled error in evaluate, applying onError posture");
@@ -7629,8 +7620,7 @@ async function runEvaluate() {
         reason: "Fencepost hit an unexpected error and could not check this command.",
         matchedInput: ""
       });
-      if (out2)
-        process.stdout.write(JSON.stringify(out2) + `
+      process.stdout.write(JSON.stringify(out2) + `
 `);
     }
     process.exit(0);

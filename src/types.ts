@@ -155,6 +155,9 @@ export interface RedirectConfig {
 
 export interface FencepostConfig {
   default: Decision;
+  // Internal: whether this layer's `default` was explicitly written in the
+  // YAML (vs filled with "ask"). Merge is set-wins, like onError.
+  _defaultSet?: boolean;
   tools: ToolsConfig;
   // Posture when fencepost runs but cannot reach a decision for a command
   // (e.g. a Bash command the parser can't understand, or an unexpected error).

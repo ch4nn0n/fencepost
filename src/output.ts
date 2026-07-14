@@ -3,6 +3,10 @@ import type { EvalResult, HookOutput } from "./types.js";
 /**
  * Format an EvalResult into the hookSpecificOutput JSON for Claude Code.
  *
+ * Every decision is emitted explicitly, including allow: empty stdout would
+ * mean "no decision" to Claude Code and fall through to its native permission
+ * prompt, whereas an explicit allow suppresses it — fencepost is the gate.
+ *
  * `updatedInput`, when provided, is the rewritten tool input (e.g. /tmp paths
  * redirected to the sandbox). It is surfaced so the tool runs against the new
  * input on allow/ask. It is ignored on deny (the call won't run).
@@ -14,19 +18,7 @@ export function formatOutput(
   result: EvalResult,
   updatedInput?: Record<string, unknown>,
   manualRunCommand?: string,
-): HookOutput | null {
-  // Fast path: allow.
-  if (result.decision === "allow") {
-    if (!updatedInput) return null; // no output means allow
-    return {
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "allow",
-        updatedInput,
-      },
-    };
-  }
-
+): HookOutput {
   const output: HookOutput = {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
@@ -35,7 +27,7 @@ export function formatOutput(
     },
   };
 
-  if (result.decision === "ask" && updatedInput) {
+  if (result.decision !== "deny" && updatedInput) {
     output.hookSpecificOutput.updatedInput = updatedInput;
   }
 

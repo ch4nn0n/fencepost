@@ -40,9 +40,9 @@ On `SessionStart`, fencepost injects a short [guidance](../configuration/guidanc
 Now watch the decisions:
 
 ```bash
-$ git status          # → allow  (silent)
-$ git push origin main  # → ask   (you approve)
-$ git push --force      # → deny  (steered to --force-with-lease)
+$ git status            # → allow  (git preset)
+$ git push origin main  # → ask    (no rule matches, so it falls through to default: ask)
+$ git push --force      # → deny   (steered to --force-with-lease)
 ```
 
 ## 3. Layer your own rules on top
@@ -80,15 +80,16 @@ See **[Tool rules](../configuration/tool-rules.md)** and **[Bash rules](../confi
 
 ## 4. Split rules by domain (optional)
 
-As your config grows, switch from one file to a `conf.d` directory. fencepost loads every `*.yaml` in it, alphabetically, and merges them:
+As your config grows, switch from one file to a config directory. fencepost loads every `*.yaml` in `.claude/fencepost/config/`, alphabetically, and merges them:
 
 ```
 .claude/
   fencepost/
-    00-base.yaml      # imports + default + onError
-    10-tools.yaml     # general tool rules
-    20-bash.yaml      # bash rules
-    50-project.yaml   # project-specific overrides
+    config/
+      00-base.yaml      # imports + default + onError
+      10-tools.yaml     # general tool rules
+      20-bash.yaml      # bash rules
+      50-project.yaml   # project-specific overrides
 ```
 
 See **[Config files](../configuration/config-files.md)** for merge semantics.
@@ -101,7 +102,7 @@ After a while, let fencepost tell you what to change:
 /audit
 ```
 
-The [audit skill](../reference/cli-and-audit.md) reads the decision log and suggests promotions (commands you keep approving → move to `allow`), flags dead rules, and prints the effective config with provenance.
+(Plugin skills are namespaced, so use `/fencepost:audit` if another plugin also defines `/audit`; the same goes for `/preset` below.) The [audit skill](../reference/cli-and-audit.md) reads the decision log and suggests promotions (commands you keep approving → move to `allow`), flags dead rules, and prints the effective config with provenance.
 
 To gate a tool that has no bundled preset, run `/preset <tool>` — it reads the tool's real command surface and builds the rules into your config. See [generating rules for a new tool](../presets.md#generating-rules-for-a-new-tool).
 
