@@ -227,6 +227,7 @@ export interface AuditEntry {
   reason: string;
   rule: string | null; // config path that matched
   tid: string; // tool_use_id
+  cwd: string; // project dir the call ran in — attributes centralised entries to a project
   normalised?: string; // only for Bash when normalisation changed the command
   // Secrets scanning outcome (feature 24). Rule ids only — never secret values.
   secrets?: { scanner: string; rules: string[]; count: number };

@@ -39,7 +39,7 @@ switch (subcommand) {
     break;
   default:
     process.stderr.write(
-      `Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|posttooluse|sessionstart|audit|config|verify] [--verbose]\n`,
+      `Unknown subcommand: ${subcommand}\nUsage: fencepost [evaluate|posttooluse|sessionstart|audit [--global]|config|verify] [--verbose]\n`,
     );
     process.exit(1);
 }
@@ -111,8 +111,9 @@ async function runEvaluate(): Promise<void> {
       toolInput: effectiveInput,
       result,
       normalisedCommand,
+      cwd: input.cwd,
     });
-    await writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry);
 
     // On a Bash deny, optionally offer the user the verbatim original command to
     // run themselves via `! <command>` (feature 23).
@@ -181,13 +182,14 @@ async function runPostToolUse(): Promise<void> {
         reason: scan.withheld ? "tool output withheld: secret scanner unavailable" : "secrets redacted from tool output",
         matchedRule: scan.withheld ? `secrets.unavailable:${scanner}` : `secrets.${scanner}`,
       },
+      cwd: input.cwd,
     });
     entry.secrets = {
       scanner,
       rules: scan.withheld ? ["unavailable"] : scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
       count: scan.redactions.reduce((n, r) => n + r.count, 0),
     };
-    await writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry);
 
     const output = {
       hookSpecificOutput: {
@@ -253,7 +255,8 @@ async function runAudit(): Promise<void> {
   // Lazy import to keep evaluate startup fast
   const { runAuditSkill } = await import("./audit/skill.js");
   const cwd = process.cwd();
-  await runAuditSkill(cwd);
+  const global = process.argv.includes("--global");
+  await runAuditSkill(cwd, global);
 }
 
 // ---- config / verify subcommands ----

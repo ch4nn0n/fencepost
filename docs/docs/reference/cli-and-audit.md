@@ -25,9 +25,12 @@ node dist/index.js config
 # Same report, but exit non-zero if there are errors. For CI / pre-commit.
 node dist/index.js verify
 
-# Read .claude/fencepost/logs/audit.jsonl (under the current directory)
-# and print an analysis.
+# Read the user-level audit log (~/.claude/fencepost/logs/audit.jsonl),
+# filter to the current project, and print an analysis.
 node dist/index.js audit
+
+# Same, but analyse entries from every project in the log.
+node dist/index.js audit --global
 ```
 
 Any subcommand also accepts `--verbose`, which turns on debug logging.
@@ -46,11 +49,13 @@ It exits non-zero on any error (invalid `default`/`onError`, YAML syntax error, 
 
 ## The audit log
 
-fencepost appends a JSONL entry for **every** evaluation — allows included — to:
+fencepost appends a JSONL entry for **every** evaluation — allows included — to a single, **user-level** log:
 
 ```
-.claude/fencepost/logs/audit.jsonl
+~/.claude/fencepost/logs/audit.jsonl
 ```
+
+Every project writes here; each entry carries a `cwd` field so it can be attributed back to the project it ran in. `FENCEPOST_HOME` overrides the home directory (used by tests). `fencepost audit` filters to the current project by default; `fencepost audit --global` analyses all projects at once.
 
 Writing is **fire-and-forget**: if it fails (permissions, disk full), the error is swallowed so the permission decision is never blocked or delayed.
 
@@ -66,10 +71,12 @@ Each entry:
   "decision": "ask",
   "reason": "Command requires approval",
   "rule": "bash.ask: kubectl delete",
-  "tid": "toolu_01"
+  "tid": "toolu_01",
+  "cwd": "/home/you/git/myproject"
 }
 ```
 
+- `cwd` is the project directory the call ran in — the basis for per-project filtering in `fencepost audit`.
 - `normalised` appears only for Bash, and only when [normalisation](../configuration/bash-rules.md#normalise--strip-noise-first) changed the command.
 - For non-Bash tools, `input` is a truncated summary of `tool_input`.
 - When a **secrets** rule matched, `input` is a paths-only JSON (`file_path` / `notebook_path`), never the command or content (which contain the secret by definition), and `normalised` is suppressed.
@@ -82,7 +89,7 @@ The log grows without rotation in v1. If it gets large, truncate or rotate it yo
 
 ## The `/audit` skill
 
-The plugin registers a Claude Code slash command, **`/audit`**, that reads the log and produces a markdown analysis with concrete config suggestions. Invoke it in a session, or run the underlying tool directly with `fencepost audit`.
+The plugin registers a Claude Code slash command, **`/audit`**, that reads the log and produces a markdown analysis with concrete config suggestions. Invoke it in a session, or run the underlying tool directly with `fencepost audit` (add `--global` to analyse every project rather than just the current one).
 
 It reports:
 
