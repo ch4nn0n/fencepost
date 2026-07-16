@@ -9,6 +9,11 @@ meta:
 
 tools:
   bash:
+    normalise:
+      - prefix: git
+        strip:
+          - '-C \S+'
+
     deny:
       # Wiping the entire working tree, including ignored files.
       - git clean -xfd
