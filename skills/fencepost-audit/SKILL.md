@@ -1,5 +1,5 @@
 ---
-name: audit
+name: fencepost-audit
 description: Analyse fencepost permission decisions and suggest config improvements
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: preset
+name: fencepost-preset
 description: Build fencepost permission rules for a CLI tool or MCP server by discovering its real command surface (from the installed binary or the live MCP tool list), classifying each command into allow/ask/deny, and merging the result into the user's own .claude/fencepost.yaml. Use when a user wants to gate a new tool, generate a permission file, or asks how to allow/ask/block a tool's commands.
 ---
 
@@ -63,4 +63,4 @@ Run a representative command from each tier (one allow, one ask, one deny) and c
 
 ## 6. Summarise
 
-Report what was added per tier, the tool version the surface was read from, and the reminder that unlisted subcommands fall through to `default`. If the user wants to share these rules as a reusable preset for others, point them at the `/contribute-preset` skill.
+Report what was added per tier, the tool version the surface was read from, and the reminder that unlisted subcommands fall through to `default`. If the user wants to share these rules as a reusable preset for others, point them at the `/fencepost-contribute` skill.
