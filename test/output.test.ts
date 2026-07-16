@@ -29,7 +29,7 @@ describe("formatOutput manual-run offer (feature 23)", () => {
   it("truncates a long matched command in the ask reason", () => {
     const long = `node -e '\n  const x = 1;\n  ${"a".repeat(200)}\n'`;
     const out = formatOutput({ decision: "ask", reason: "approve?", matchedInput: long });
-    const reason = out.hookSpecificOutput.permissionDecisionReason;
+    const reason = out.hookSpecificOutput.permissionDecisionReason ?? "";
     expect(reason.length).toBeLessThan(120);
     expect(reason).not.toContain("\n");
     expect(reason).toContain("…");
