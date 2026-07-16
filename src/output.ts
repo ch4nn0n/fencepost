@@ -67,6 +67,12 @@ export function formatOutput(
   return output;
 }
 
+/** Collapse a matched command to one short line for the permission prompt. */
+function summarise(input: string): string {
+  const oneLine = input.replace(/\s+/g, " ").trim();
+  return oneLine.length > 80 ? `${oneLine.slice(0, 79)}…` : oneLine;
+}
+
 function formatReason(result: EvalResult): string {
   const prefix = "Fencepost:";
 
@@ -82,8 +88,13 @@ function formatReason(result: EvalResult): string {
   }
 
   if (result.decision === "ask") {
-    const what = result.matchedInput ?? "this command";
-    return `${prefix} '${what}' requires approval.`;
+    // Claude Code already renders the full command above the hook message, so
+    // only a short pointer to the matched part(s) is repeated here.
+    const parts = (result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : [])).map(summarise);
+    if (parts.length > 1) {
+      return `${prefix} these parts require approval:\n${parts.map((p) => `- ${p}`).join("\n")}`;
+    }
+    return `${prefix} '${parts[0] ?? "this command"}' requires approval.`;
   }
 
   return result.reason;

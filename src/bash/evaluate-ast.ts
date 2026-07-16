@@ -22,6 +22,17 @@ function mostRestrictive(results: EvalResult[]): EvalResult {
   return results.reduce((best, curr) => (rank[curr.decision] > rank[best.decision] ? curr : best));
 }
 
+/** Distinct matchedInput parts across every ask-level result. */
+function askParts(results: EvalResult[]): string[] {
+  return [
+    ...new Set(
+      results
+        .filter((r) => r.decision === "ask")
+        .flatMap((r) => r.matchedInputs ?? (r.matchedInput ? [r.matchedInput] : [])),
+    ),
+  ];
+}
+
 const SHELL_WRAPPERS = new Set(["sh", "bash", "dash", "zsh", "ash", "ksh"]);
 const MAX_WRAPPER_DEPTH = 8;
 
@@ -202,8 +213,13 @@ function evaluateCommand(
   if (argAsk) return base("ask", argAsk.description ?? "Argument requires approval", `bash.arguments: ${argAsk.command}`, argAsk.alternative);
   const redirAsk = redirectMatch("ask");
   if (redirAsk) return base("ask", redirAsk.description ?? "Redirect requires approval", `bash.redirects`, redirAsk.alternative);
+  // Keep the nested finding's own matchedInput (the flagged call/write/import):
+  // it names the part to review, where the outer text is often a wall of code.
   const nestAsk = nestedMatch("ask");
-  if (nestAsk) return { ...nestAsk, matchedInput: text };
+  if (nestAsk) {
+    const parts = askParts(nested);
+    return { ...nestAsk, ...(parts.length > 1 ? { matchedInputs: parts } : {}) };
+  }
 
   // Tier 4: allow (prefix).
   for (const rule of bash.allow) {
@@ -322,7 +338,15 @@ export async function evaluateBashAst(
   }
 
   const winner = mostRestrictive(results);
-  if (results.length > 1) winner.isCompound = true;
+  if (results.length > 1) {
+    winner.isCompound = true;
+    // Surface every part that needs approval, not just the winner, so the
+    // user reviews the full list (e.g. `ls x && cat y && rm z` -> cat y, rm z).
+    if (winner.decision === "ask") {
+      const parts = askParts(results);
+      if (parts.length > 1) winner.matchedInputs = parts;
+    }
+  }
 
   // Discourage chaining: a sequenced chain (&&, ||, ;) that would merely require
   // approval is denied with guidance to run the parts separately. Pipes and

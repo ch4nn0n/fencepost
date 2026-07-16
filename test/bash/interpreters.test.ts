@@ -39,9 +39,20 @@ describe("nested python analysis", () => {
     expect(r.decision).toBe("allow"); // python3 allow-listed, rule's pathArgsOutside not satisfied
   });
 
-  it("asks before subprocess", async () => {
+  it("asks before subprocess, naming the flagged construct in matchedInput", async () => {
     const r = await evaluateBashAst('python3 -c "import subprocess; subprocess.run([\'ls\'])"', cfg(python), CWD);
     expect(r.decision).toBe("ask");
+    expect(r.matchedInput).toBe("subprocess.run(['ls'])");
+  });
+
+  it("lists every flagged construct when inline code has multiple findings", async () => {
+    const r = await evaluateBashAst(
+      'python3 -c "import subprocess; subprocess.run([\'ls\']); eval(\'x\')"',
+      cfg(python),
+      CWD,
+    );
+    expect(r.decision).toBe("ask");
+    expect(r.matchedInputs).toEqual(["subprocess.run(['ls'])", "eval('x')"]);
   });
 
   it("denies open() writing outside the sandbox", async () => {

@@ -26,6 +26,33 @@ describe("formatOutput manual-run offer (feature 23)", () => {
     expect(out?.hookSpecificOutput.additionalContext ?? "").not.toContain("prefixed with");
   });
 
+  it("truncates a long matched command in the ask reason", () => {
+    const long = `node -e '\n  const x = 1;\n  ${"a".repeat(200)}\n'`;
+    const out = formatOutput({ decision: "ask", reason: "approve?", matchedInput: long });
+    const reason = out.hookSpecificOutput.permissionDecisionReason;
+    expect(reason.length).toBeLessThan(120);
+    expect(reason).not.toContain("\n");
+    expect(reason).toContain("…");
+    expect(reason).toContain("requires approval");
+  });
+
+  it("keeps a short matched sub-command intact in the ask reason", () => {
+    const out = formatOutput({ decision: "ask", reason: "approve?", matchedInput: "rm y" });
+    expect(out.hookSpecificOutput.permissionDecisionReason).toBe("Fencepost: 'rm y' requires approval.");
+  });
+
+  it("lists multiple matched parts as bullet lines in the ask reason", () => {
+    const out = formatOutput({
+      decision: "ask",
+      reason: "approve?",
+      matchedInput: "cat y",
+      matchedInputs: ["cat y", "rm z"],
+    });
+    expect(out.hookSpecificOutput.permissionDecisionReason).toBe(
+      "Fencepost: these parts require approval:\n- cat y\n- rm z",
+    );
+  });
+
   it("does not add a manual-run offer to allow/ask", () => {
     const allow = formatOutput({ decision: "allow", reason: "ok" });
     expect(allow.hookSpecificOutput.permissionDecision).toBe("allow");
