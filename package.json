@@ -1,6 +1,6 @@
 {
   "name": "fencepost",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Configurable permission gate for Claude Code tool calls",
   "module": "src/index.ts",
   "main": "src/index.ts",
