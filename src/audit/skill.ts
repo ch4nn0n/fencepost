@@ -1,11 +1,12 @@
-import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { resolveConfig } from "../config.js";
+import { auditLogPath } from "./logger.js";
 import { analyseAudit } from "./analyse.js";
 import type { AuditEntry, ResolvedConfig } from "../types.js";
 
-export async function runAuditSkill(cwd: string): Promise<void> {
+export async function runAuditSkill(cwd: string, global = false): Promise<void> {
   const config = await resolveConfig(cwd);
   const { _sources } = config;
 
@@ -21,15 +22,28 @@ export async function runAuditSkill(cwd: string): Promise<void> {
   }
 
   // ---- Load audit log ----
-  const logPath = join(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
-  const entries = await loadAuditLog(logPath);
+  // One user-level log holds every project's entries. Default view filters to
+  // the current project (matching per-project behaviour); --global shows all,
+  // but promotion/dead-rule suggestions are still computed against *this*
+  // project's config, so they only make sense per-project.
+  const all = await loadAuditLog(auditLogPath());
+  const here = resolve(cwd);
+  const entries = global ? all : all.filter((e) => resolve(e.cwd ?? "") === here);
 
   if (entries.length === 0) {
     process.stdout.write("## Audit Log\n\nNo audit entries found.\n");
     return;
   }
 
-  process.stdout.write(`## Audit Log\n\n${entries.length} entries found.\n\n`);
+  const scope = global
+    ? `${entries.length} entries across ${new Set(all.map((e) => e.cwd)).size} projects (--global).`
+    : `${entries.length} entries for this project.`;
+  process.stdout.write(`## Audit Log\n\n${scope}\n\n`);
+  if (global) {
+    process.stdout.write(
+      "_Suggestions below are computed against the current project's config; run without `--global` for per-project analysis._\n\n",
+    );
+  }
 
   const analysis = analyseAudit(entries, config);
 

@@ -5620,7 +5620,7 @@ var init_detect2 = __esm(() => {
 // src/config.ts
 import { join as join9, resolve as resolve3, dirname as dirname4 } from "node:path";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
-import { homedir as homedir3 } from "node:os";
+import { homedir as homedir4 } from "node:os";
 import { existsSync as existsSync3 } from "node:fs";
 import { readdir as readdir2, readFile as readFile4 } from "node:fs/promises";
 function note2(level, file, message) {
@@ -6194,7 +6194,7 @@ async function compileConfig2(cwd) {
   }
 }
 async function resolveInternal2(cwd) {
-  const home = process.env["FENCEPOST_HOME"] || homedir3();
+  const home = process.env["FENCEPOST_HOME"] || homedir4();
   const claudeDir = join9(resolve3(cwd), ".claude");
   const candidates2 = [
     { confDir: join9(claudeDir, "fencepost", "config"), singleFile: join9(claudeDir, "fencepost.yaml") },
@@ -6285,6 +6285,17 @@ var init_config = __esm(() => {
   };
   SECRET_SCANNER_NAMES2 = ["auto", "gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
   PRESET_NAME_RE2 = /^[a-zA-Z0-9_-]+$/;
+});
+
+// src/audit/logger.ts
+import { join as join10, dirname as dirname5 } from "node:path";
+import { homedir as homedir5 } from "node:os";
+function auditLogPath2() {
+  const home = process.env["FENCEPOST_HOME"] || homedir5();
+  return join10(home, ".claude", "fencepost", "logs", "audit.jsonl");
+}
+var init_logger2 = __esm(() => {
+  init_logger();
 });
 
 // src/audit/analyse.ts
@@ -6391,10 +6402,10 @@ var exports_skill = {};
 __export(exports_skill, {
   runAuditSkill: () => runAuditSkill
 });
-import { join as join10 } from "node:path";
 import { existsSync as existsSync4 } from "node:fs";
 import { readFile as readFile5 } from "node:fs/promises";
-async function runAuditSkill(cwd) {
+import { resolve as resolve4 } from "node:path";
+async function runAuditSkill(cwd, global = false) {
   const config = await resolveConfig(cwd);
   const { _sources } = config;
   process.stdout.write(`# Fencepost Audit
@@ -6415,8 +6426,9 @@ ${_sources.map((s) => `  - ${s}`).join(`
 `);
     printConfigSummary(config);
   }
-  const logPath = join10(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
-  const entries = await loadAuditLog(logPath);
+  const all = await loadAuditLog(auditLogPath2());
+  const here2 = resolve4(cwd);
+  const entries = global ? all : all.filter((e) => resolve4(e.cwd ?? "") === here2);
   if (entries.length === 0) {
     process.stdout.write(`## Audit Log
 
@@ -6424,11 +6436,15 @@ No audit entries found.
 `);
     return;
   }
+  const scope = global ? `${entries.length} entries across ${new Set(all.map((e) => e.cwd)).size} projects (--global).` : `${entries.length} entries for this project.`;
   process.stdout.write(`## Audit Log
 
-${entries.length} entries found.
+${scope}
 
 `);
+  if (global) {
+    process.stdout.write("_Suggestions below are computed against the current project's config; run without `--global` for per-project analysis._\n\n");
+  }
   const analysis = analyseAudit(entries, config);
   process.stdout.write(`## Decision Frequency
 
@@ -6568,6 +6584,7 @@ function printConfigSummary(config) {
 }
 var init_skill = __esm(() => {
   init_config();
+  init_logger2();
 });
 
 // src/util/stdin.ts
@@ -7370,9 +7387,14 @@ function formatReason(result) {
 // src/audit/logger.ts
 init_logger();
 import { join as join3, dirname as dirname3 } from "node:path";
+import { homedir as homedir3 } from "node:os";
 import { mkdir, appendFile } from "node:fs/promises";
-async function writeAuditEntry(entry, cwd) {
-  const logPath = join3(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
+function auditLogPath() {
+  const home = process.env["FENCEPOST_HOME"] || homedir3();
+  return join3(home, ".claude", "fencepost", "logs", "audit.jsonl");
+}
+async function writeAuditEntry(entry) {
+  const logPath = auditLogPath();
   try {
     const line = JSON.stringify(entry) + `
 `;
@@ -7388,7 +7410,8 @@ function buildAuditEntry({
   toolName,
   toolInput,
   result,
-  normalisedCommand
+  normalisedCommand,
+  cwd
 }) {
   const secretsMatch = result.matchedRule?.startsWith("secrets.") === true;
   let inputSummary;
@@ -7412,7 +7435,8 @@ function buildAuditEntry({
     decision: result.decision,
     reason: result.reason,
     rule: result.matchedRule ?? null,
-    tid: toolUseId
+    tid: toolUseId,
+    cwd
   };
   if (normalisedCommand && normalisedCommand !== inputSummary && !secretsMatch) {
     entry.normalised = normalisedCommand;
@@ -7605,7 +7629,7 @@ switch (subcommand) {
     break;
   default:
     process.stderr.write(`Unknown subcommand: ${subcommand}
-Usage: fencepost [evaluate|posttooluse|sessionstart|audit|config|verify] [--verbose]
+Usage: fencepost [evaluate|posttooluse|sessionstart|audit [--global]|config|verify] [--verbose]
 `);
     process.exit(1);
 }
@@ -7653,9 +7677,10 @@ async function runEvaluate() {
       toolName: input.tool_name,
       toolInput: effectiveInput,
       result,
-      normalisedCommand
+      normalisedCommand,
+      cwd: input.cwd
     });
-    await writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry);
     let manualRunCommand;
     if (result.decision === "deny" && input.tool_name === "Bash" && config.tools.bash.offerManualRun !== false) {
       manualRunCommand = String(input.tool_input["command"] ?? "") || undefined;
@@ -7702,14 +7727,15 @@ async function runPostToolUse() {
         decision: "allow",
         reason: scan.withheld ? "tool output withheld: secret scanner unavailable" : "secrets redacted from tool output",
         matchedRule: scan.withheld ? `secrets.unavailable:${scanner}` : `secrets.${scanner}`
-      }
+      },
+      cwd: input.cwd
     });
     entry.secrets = {
       scanner,
       rules: scan.withheld ? ["unavailable"] : scan.redactions.map((r) => `${r.scanner}:${r.ruleId}`),
       count: scan.redactions.reduce((n, r) => n + r.count, 0)
     };
-    await writeAuditEntry(entry, input.cwd);
+    await writeAuditEntry(entry);
     const output = {
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
@@ -7763,7 +7789,8 @@ ${context}` : warn;
 async function runAudit() {
   const { runAuditSkill: runAuditSkill2 } = await Promise.resolve().then(() => (init_skill(), exports_skill));
   const cwd = process.cwd();
-  await runAuditSkill2(cwd);
+  const global = process.argv.includes("--global");
+  await runAuditSkill2(cwd, global);
 }
 async function runConfig(verify) {
   const cwd = process.cwd();

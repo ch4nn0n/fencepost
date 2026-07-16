@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/ch4nn0n/fencepost/compare/v0.7.0...v0.8.0) (2026-07-16)
+
+
+### Features
+
+* **audit:** centralise audit log at user level ([d6a2499](https://github.com/ch4nn0n/fencepost/commit/d6a2499534623f0382eb2912b539dc43ef5ee070))
+
 ## [0.7.0](https://github.com/ch4nn0n/fencepost/compare/v0.6.0...v0.7.0) (2026-07-14)
 
 

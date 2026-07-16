@@ -17,6 +17,7 @@ describe("audit entries for secrets matches", () => {
         reason: "The Write input contains what looks like a secret (gitleaks:github-pat).",
         matchedRule: "secrets.gitleaks:github-pat",
       },
+      cwd: "/tmp/claude/proj",
     });
     expect(entry.input).toContain("/tmp/claude/x.ts");
     expect(JSON.stringify(entry)).not.toContain(FAKE_SECRET);
@@ -34,6 +35,7 @@ describe("audit entries for secrets matches", () => {
         matchedRule: "secrets.gitleaks:github-pat",
       },
       normalisedCommand: `export TOKEN=${FAKE_SECRET}`,
+      cwd: "/tmp/claude/proj",
     });
     expect(JSON.stringify(entry)).not.toContain(FAKE_SECRET);
   });
@@ -45,6 +47,7 @@ describe("audit entries for secrets matches", () => {
       toolName: "Bash",
       toolInput: { command: "git status" },
       result: { decision: "allow", reason: "", matchedRule: "bash.allow: git status" },
+      cwd: "/tmp/claude/proj",
     });
     expect(entry.input).toBe("git status");
   });

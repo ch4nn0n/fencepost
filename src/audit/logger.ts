@@ -1,12 +1,26 @@
 import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 import { mkdir, appendFile } from "node:fs/promises";
 import { logger } from "../logger.js";
 import type { AuditEntry } from "../types.js";
 
+/**
+ * Path to the single, user-level audit log. All projects append here; each
+ * entry carries its own `cwd` for per-project attribution. FENCEPOST_HOME
+ * overrides the home dir (mirrors config resolution, keeps tests hermetic).
+ */
+export function auditLogPath(): string {
+  const home = process.env["FENCEPOST_HOME"] || homedir();
+  return join(home, ".claude", "fencepost", "logs", "audit.jsonl");
+}
+
 /** Append an audit entry to the JSONL log file. Fire-and-forget — never throws. */
-export async function writeAuditEntry(entry: AuditEntry, cwd: string): Promise<void> {
-  const logPath = join(cwd, ".claude", "fencepost", "logs", "audit.jsonl");
+export async function writeAuditEntry(entry: AuditEntry): Promise<void> {
+  const logPath = auditLogPath();
   try {
+    // ponytail: O_APPEND write() is atomic per call on Linux; long lines from
+    // concurrent sessions across projects can still interleave. Add a lock only
+    // if corrupted lines actually show up.
     const line = JSON.stringify(entry) + "\n";
     await mkdir(dirname(logPath), { recursive: true });
     await appendFile(logPath, line, "utf8");
@@ -24,6 +38,7 @@ export function buildAuditEntry({
   toolInput,
   result,
   normalisedCommand,
+  cwd,
 }: {
   sessionId: string;
   toolUseId: string;
@@ -31,6 +46,7 @@ export function buildAuditEntry({
   toolInput: Record<string, unknown>;
   result: import("../types.js").EvalResult;
   normalisedCommand?: string;
+  cwd: string;
 }): AuditEntry {
   // Summarise tool input. When the secrets scanner matched, the input body
   // contains a secret by definition — log target paths only, never content
@@ -58,6 +74,7 @@ export function buildAuditEntry({
     reason: result.reason,
     rule: result.matchedRule ?? null,
     tid: toolUseId,
+    cwd,
   };
 
   if (normalisedCommand && normalisedCommand !== inputSummary && !secretsMatch) {

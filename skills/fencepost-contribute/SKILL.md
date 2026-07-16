@@ -1,9 +1,9 @@
 ---
-name: contribute-preset
+name: fencepost-contribute
 description: Package a fencepost rule set as a shareable bundled preset and open a pull request to the fencepost repository (fork, branch, commit, gh pr create). Use when a user wants to share their permission rules with others or contribute a preset upstream.
 ---
 
-Turn a rule set the user has (authored with `/preset`, or an existing preset they point at) into a bundled preset under `presets/` and open a pull request to `ch4nn0n/fencepost`. This is the sharing counterpart to `/preset`, which only writes the user's own local config.
+Turn a rule set the user has (authored with `/fencepost-preset`, or an existing preset they point at) into a bundled preset under `presets/` and open a pull request to `ch4nn0n/fencepost`. This is the sharing counterpart to `/fencepost-preset`, which only writes the user's own local config.
 
 Requires the `gh` CLI to be authenticated (`gh auth status`).
 
