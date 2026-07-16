@@ -54,3 +54,8 @@ tools:
         decision: deny
         description: "Redirecting output outside the sandbox can clobber files."
         alternative: "Write under /tmp/claude/ or a path inside the project."
+
+    allowChecks:
+      # Read-only subcommands of fencepost's own CLI (audit/verify/evaluate):
+      # no new trust, the same binary already runs unprompted on every tool call.
+      - '^node\s+"?[^"]*\.claude/plugins/cache/fencepost/fencepost/[^/"]+"?/dist/index\.js"?\s+(audit(\s+--global)?|verify|evaluate)\b'
