@@ -212,6 +212,7 @@ export interface EvalResult {
   alternative?: string;
   matchedRule?: string; // e.g. "bash.deny: git branch -D"
   matchedInput?: string; // the command/tool that matched
+  matchedInputs?: string[]; // every part of a compound command that matched (ask only)
   isCompound?: boolean;
   chained?: boolean; // denied purely because chaining is discouraged (feature 17)
 }

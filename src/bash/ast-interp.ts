@@ -155,7 +155,7 @@ export async function analyseInterpreter(
           reason: rule.description ?? `inline ${match.lang}: ${call.callee}`,
           ...(rule.alternative ? { alternative: rule.alternative } : {}),
           matchedRule: `${match.lang}.calls: ${rule.match}`,
-          matchedInput: cmd.text,
+          matchedInput: `${call.callee}(${call.argTexts.join(", ")})`,
         });
         break; // one finding per rule is enough
       }
@@ -169,7 +169,7 @@ export async function analyseInterpreter(
             reason: cfg.writes.description ?? `inline ${match.lang}: writes ${target}`,
             ...(cfg.writes.alternative ? { alternative: cfg.writes.alternative } : {}),
             matchedRule: `${match.lang}.writes`,
-            matchedInput: cmd.text,
+            matchedInput: `writes ${target}`,
           });
           break;
         }
@@ -177,12 +177,13 @@ export async function analyseInterpreter(
     }
 
     for (const rule of cfg.imports ?? []) {
-      if (imports.some((mod) => nameMatches(mod, rule.match))) {
+      const mod = imports.find((m) => nameMatches(m, rule.match));
+      if (mod) {
         findings.push({
           decision: rule.decision,
           reason: rule.description ?? `inline ${match.lang}: imports ${rule.match}`,
           matchedRule: `${match.lang}.imports: ${rule.match}`,
-          matchedInput: cmd.text,
+          matchedInput: `import ${mod}`,
         });
       }
     }

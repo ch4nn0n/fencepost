@@ -4672,7 +4672,7 @@ async function analyseInterpreter(cmd, config, cwd) {
           reason: rule.description ?? `inline ${match.lang}: ${call.callee}`,
           ...rule.alternative ? { alternative: rule.alternative } : {},
           matchedRule: `${match.lang}.calls: ${rule.match}`,
-          matchedInput: cmd.text
+          matchedInput: `${call.callee}(${call.argTexts.join(", ")})`
         });
         break;
       }
@@ -4685,19 +4685,20 @@ async function analyseInterpreter(cmd, config, cwd) {
             reason: cfg.writes.description ?? `inline ${match.lang}: writes ${target}`,
             ...cfg.writes.alternative ? { alternative: cfg.writes.alternative } : {},
             matchedRule: `${match.lang}.writes`,
-            matchedInput: cmd.text
+            matchedInput: `writes ${target}`
           });
           break;
         }
       }
     }
     for (const rule of cfg.imports ?? []) {
-      if (imports.some((mod) => nameMatches(mod, rule.match))) {
+      const mod = imports.find((m) => nameMatches(m, rule.match));
+      if (mod) {
         findings.push({
           decision: rule.decision,
           reason: rule.description ?? `inline ${match.lang}: imports ${rule.match}`,
           matchedRule: `${match.lang}.imports: ${rule.match}`,
-          matchedInput: cmd.text
+          matchedInput: `import ${mod}`
         });
       }
     }
@@ -4774,6 +4775,11 @@ __export(exports_evaluate_ast, {
 function mostRestrictive(results) {
   const rank = { deny: 3, ask: 2, allow: 1 };
   return results.reduce((best, curr) => rank[curr.decision] > rank[best.decision] ? curr : best);
+}
+function askParts(results) {
+  return [
+    ...new Set(results.filter((r) => r.decision === "ask").flatMap((r) => r.matchedInputs ?? (r.matchedInput ? [r.matchedInput] : [])))
+  ];
 }
 function shellWrapperCode(cmd) {
   if (cmd.name === "eval") {
@@ -4898,8 +4904,10 @@ function evaluateCommand(cmd, config, cwd, nested) {
   if (redirAsk)
     return base("ask", redirAsk.description ?? "Redirect requires approval", `bash.redirects`, redirAsk.alternative);
   const nestAsk = nestedMatch("ask");
-  if (nestAsk)
-    return { ...nestAsk, matchedInput: text };
+  if (nestAsk) {
+    const parts2 = askParts(nested);
+    return { ...nestAsk, ...parts2.length > 1 ? { matchedInputs: parts2 } : {} };
+  }
   for (const rule of bash.allow) {
     if (prefixMatch(text, rule))
       return base("allow", "Command allowed by rule", `bash.allow: ${rule}`);
@@ -4983,8 +4991,14 @@ async function evaluateBashAst(rawCommand, config, cwd, depth = 0) {
     return { decision: config.default, reason: "No command found; using default", matchedInput: rawCommand };
   }
   const winner = mostRestrictive(results);
-  if (results.length > 1)
+  if (results.length > 1) {
     winner.isCompound = true;
+    if (winner.decision === "ask") {
+      const parts2 = askParts(results);
+      if (parts2.length > 1)
+        winner.matchedInputs = parts2;
+    }
+  }
   if (config.tools.bash.discourageChaining === true && !res.hadControlFlow && res.hadSequencing && winner.decision === "ask") {
     logger.info({ rawCommand }, "discouraging chained ask -> deny");
     return {
@@ -7365,6 +7379,10 @@ function formatOutput(result, updatedInput, manualRunCommand) {
   }
   return output;
 }
+function summarise(input) {
+  const oneLine = input.replace(/\s+/g, " ").trim();
+  return oneLine.length > 80 ? `${oneLine.slice(0, 79)}…` : oneLine;
+}
 function formatReason(result) {
   const prefix = "Fencepost:";
   if (result.decision === "deny") {
@@ -7378,8 +7396,13 @@ function formatReason(result) {
     return reason;
   }
   if (result.decision === "ask") {
-    const what = result.matchedInput ?? "this command";
-    return `${prefix} '${what}' requires approval.`;
+    const parts2 = (result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : [])).map(summarise);
+    if (parts2.length > 1) {
+      return `${prefix} these parts require approval:
+${parts2.map((p) => `- ${p}`).join(`
+`)}`;
+    }
+    return `${prefix} '${parts2[0] ?? "this command"}' requires approval.`;
   }
   return result.reason;
 }

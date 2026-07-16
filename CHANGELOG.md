@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/ch4nn0n/fencepost/compare/v0.8.0...v0.9.0) (2026-07-16)
+
+
+### Features
+
+* **git preset:** normalise away -C &lt;path&gt; flag ([08328c1](https://github.com/ch4nn0n/fencepost/commit/08328c16ab89773fbd55be5d0aea5d5ea0414da3))
+* **output:** point permission prompts at the parts needing review ([3181563](https://github.com/ch4nn0n/fencepost/commit/3181563fe42ab96cc9b8dd7ab46fd50273e45644))
+* **presets:** trust fencepost's own audit/verify/evaluate invocations ([b727286](https://github.com/ch4nn0n/fencepost/commit/b727286db9e130acfcf3c74053ecfef639900ab2))
+
+
+### Bug Fixes
+
+* **test:** handle optional permissionDecisionReason in truncation test ([52a9c7f](https://github.com/ch4nn0n/fencepost/commit/52a9c7f401d547a2bcb3b33185cb2384a0a291c9))
+
 ## [0.8.0](https://github.com/ch4nn0n/fencepost/compare/v0.7.0...v0.8.0) (2026-07-16)
 
 

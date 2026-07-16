@@ -60,6 +60,16 @@ describe("evaluate", () => {
     const r = await evaluate(makeInput("Bash", { command: "ls && git push origin main" }), config);
     expect(r.decision).toBe("ask");
     expect(r.isCompound).toBe(true);
+    expect(r.matchedInputs).toBeUndefined(); // single ask part: no list needed
+  });
+
+  it("lists every ask part of a compound command", async () => {
+    const r = await evaluate(
+      makeInput("Bash", { command: "ls x && cat y && git push origin main" }),
+      config,
+    );
+    expect(r.decision).toBe("ask");
+    expect(r.matchedInputs).toEqual(["cat y", "git push origin main"]);
   });
 
   it("evaluates loop bodies natively (no scaffolding heuristics)", async () => {
