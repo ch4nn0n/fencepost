@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/ch4nn0n/fencepost/compare/v0.9.0...v0.10.0) (2026-07-17)
+
+
+### Features
+
+* **output:** bold ochre "Fencepost:" prefix on permission reasons ([ac784ee](https://github.com/ch4nn0n/fencepost/commit/ac784eede7807602f1e3e81f43afaeb5eb98f3e7))
+
+
+### Bug Fixes
+
+* **output:** use bullet list for ask reason regardless of part count ([98d4e85](https://github.com/ch4nn0n/fencepost/commit/98d4e85ea242d588657891b45e91aa42c6528e41))
+
 ## [0.9.0](https://github.com/ch4nn0n/fencepost/compare/v0.8.0...v0.9.0) (2026-07-16)
 
 
