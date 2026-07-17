@@ -90,11 +90,9 @@ function formatReason(result: EvalResult): string {
   if (result.decision === "ask") {
     // Claude Code already renders the full command above the hook message, so
     // only a short pointer to the matched part(s) is repeated here.
-    const parts = (result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : [])).map(summarise);
-    if (parts.length > 1) {
-      return `${prefix} these parts require approval:\n${parts.map((p) => `- ${p}`).join("\n")}`;
-    }
-    return `${prefix} '${parts[0] ?? "this command"}' requires approval.`;
+    const rawParts = result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : []);
+    const parts = rawParts.length > 0 ? rawParts : ["this command"];
+    return `${prefix}\n${parts.map((p) => `- ${summarise(p)}`).join("\n")}`;
   }
 
   return result.reason;
