@@ -73,8 +73,13 @@ function summarise(input: string): string {
   return oneLine.length > 80 ? `${oneLine.slice(0, 79)}…` : oneLine;
 }
 
+// ponytail: ANSI color is undocumented for this field, terminal pass-through only. Drop to plain "Fencepost:" if it ever renders as raw escape codes.
+// Truecolor match for --fp-ask (dark theme) in docs/src/css/custom.css: #e0a445.
+const BOLD_OCHRE = "\x1b[1;38;2;224;164;69m";
+const RESET = "\x1b[0m";
+
 function formatReason(result: EvalResult): string {
-  const prefix = "Fencepost:";
+  const prefix = `${BOLD_OCHRE}Fencepost:${RESET}`;
 
   if (result.decision === "deny") {
     if (result.chained) {
