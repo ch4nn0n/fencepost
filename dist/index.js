@@ -7383,8 +7383,10 @@ function summarise(input) {
   const oneLine = input.replace(/\s+/g, " ").trim();
   return oneLine.length > 80 ? `${oneLine.slice(0, 79)}…` : oneLine;
 }
+var BOLD_OCHRE = "\x1B[1;38;2;224;164;69m";
+var RESET = "\x1B[0m";
 function formatReason(result) {
-  const prefix = "Fencepost:";
+  const prefix = `${BOLD_OCHRE}Fencepost:${RESET}`;
   if (result.decision === "deny") {
     if (result.chained) {
       return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
@@ -7396,13 +7398,11 @@ function formatReason(result) {
     return reason;
   }
   if (result.decision === "ask") {
-    const parts2 = (result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : [])).map(summarise);
-    if (parts2.length > 1) {
-      return `${prefix} these parts require approval:
-${parts2.map((p) => `- ${p}`).join(`
+    const rawParts = result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : []);
+    const parts2 = rawParts.length > 0 ? rawParts : ["this command"];
+    return `${prefix}
+${parts2.map((p) => `- ${summarise(p)}`).join(`
 `)}`;
-    }
-    return `${prefix} '${parts2[0] ?? "this command"}' requires approval.`;
   }
   return result.reason;
 }
