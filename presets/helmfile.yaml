@@ -14,8 +14,12 @@ tools:
           - '-n \S+'
           - '--namespace[= ]\S+'
           - '--kube-context[= ]\S+'
+          - '--kubeconfig[= ]\S+'
+          - '-e \S+'
+          - '--environment[= ]\S+'
           - '-l \S+'
           - '--selector[= ]\S+'
+          - '--skip-deps'
 
     checks:
       - test: 'helmfile\s+(destroy|delete)\b'
