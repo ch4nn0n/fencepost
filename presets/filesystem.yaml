@@ -10,6 +10,14 @@ meta:
 
 tools:
   bash:
+    allowChecks:
+      # bash/sh -n is a syntax-only check, it never executes the script. -n
+      # must be the first argument: once bash sees a non-flag operand it stops
+      # parsing options, so a trailing "-n" would just be passed to the script
+      # instead of switching bash into check mode.
+      - '^bash\s+-n\b'
+      - '^sh\s+-n\b'
+
     checks:
       - test: '\bfind\b.*\s-(delete|exec|execdir|ok|okdir)\b'
         description: "find with -delete or -exec runs destructive actions across every match."
