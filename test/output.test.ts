@@ -61,4 +61,10 @@ describe("formatOutput manual-run offer (feature 23)", () => {
     const ask = formatOutput({ decision: "ask", reason: "approve?" }, undefined, "rm -rf x");
     expect(ask?.hookSpecificOutput.additionalContext).toBeUndefined();
   });
+
+  it("adds exactly one full stop before the alternative", () => {
+    const ended = formatOutput({ ...deny, reason: "Force-push is dangerous." });
+    expect(ended.hookSpecificOutput.permissionDecisionReason).toContain("dangerous. Use this instead:");
+    expect(formatOutput(deny).hookSpecificOutput.permissionDecisionReason).toContain("dangerous. Use this instead:");
+  });
 });

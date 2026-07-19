@@ -85,9 +85,11 @@ function formatReason(result: EvalResult): string {
     if (result.chained) {
       return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
     }
-    let reason = `${prefix} blocked — ${result.reason}`;
+    // Descriptions usually punctuate themselves; don't add a second full stop.
+    const body = result.reason.trimEnd();
+    let reason = `${prefix} blocked — ${body}`;
     if (result.alternative) {
-      reason += `. Use this instead: ${result.alternative}`;
+      reason += `${/[.!?…]$/.test(body) ? "" : "."} Use this instead: ${result.alternative}`;
     }
     return reason;
   }
