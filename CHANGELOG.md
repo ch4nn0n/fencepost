@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.12.0](https://github.com/ch4nn0n/fencepost/compare/v0.11.0...v0.12.0) (2026-07-20)
+
+
+### Features
+
+* **config:** add 'user' reserved import token ([8ab2ec0](https://github.com/ch4nn0n/fencepost/commit/8ab2ec0d7fc3402a3051369efe5ca4823214325f))
+* **presets:** allow AskUserQuestion in claude preset ([c4b523e](https://github.com/ch4nn0n/fencepost/commit/c4b523ef7fccfbafc9dde84b74944e0cd8286310))
+* **presets:** allow base64 in filesystem preset ([06f5ec7](https://github.com/ch4nn0n/fencepost/commit/06f5ec7addbe7d2c05e2eafe8caecd9bbc04e5a4))
+* **presets:** allow Monitor in claude preset ([7c2d54b](https://github.com/ch4nn0n/fencepost/commit/7c2d54b071cd1c50d819a8561d7e6547ea24227f))
+
+
+### Bug Fixes
+
+* **deps:** bump js-yaml to 4.3.0 ([35aca16](https://github.com/ch4nn0n/fencepost/commit/35aca1602d7e4fbf00affa50a3f58c444ce05ed3))
+* **path-match:** resolve symlinks in sandbox containment checks ([b97c9b0](https://github.com/ch4nn0n/fencepost/commit/b97c9b0bbff9a2f0faca773455b31ba2c5a76900))
+
 ## [0.11.0](https://github.com/ch4nn0n/fencepost/compare/v0.10.0...v0.11.0) (2026-07-20)
 
 
