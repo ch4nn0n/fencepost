@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { isUnderRoot, isOutsideAllRoots, matchesPathGlob, pathValueOf } from "../../src/util/path-match.js";
 
 const CWD = "/home/me/proj";
@@ -15,6 +18,28 @@ describe("isUnderRoot", () => {
   it("resolves relative roots/targets against cwd", () => {
     expect(isUnderRoot("build/x", ".", CWD)).toBe(true);
     expect(isUnderRoot("../../etc/x", ".", CWD)).toBe(false);
+  });
+
+  it("rejects escape via a symlink planted inside an allowed root", () => {
+    const base = mkdtempSync(join(tmpdir(), "fp-symlink-"));
+    const sandbox = join(base, "claude");
+    const secret = join(base, "outside-secret");
+    mkdirSync(sandbox);
+    mkdirSync(secret);
+    // Attacker (or an earlier command) plants a symlink inside the sandbox
+    // that points outside it. A never-yet-created file under that symlink
+    // must not be reported as "under" the sandbox root.
+    symlinkSync(secret, join(sandbox, "escape"));
+    expect(isUnderRoot(join(sandbox, "escape", "authorized_keys"), sandbox, CWD)).toBe(false);
+  });
+
+  it("still allows a symlinked root's own contents (target and root resolve together)", () => {
+    const base = mkdtempSync(join(tmpdir(), "fp-symlink-"));
+    const real = join(base, "real");
+    const linkedRoot = join(base, "claude");
+    mkdirSync(real);
+    symlinkSync(real, linkedRoot);
+    expect(isUnderRoot(join(linkedRoot, "scratch.txt"), linkedRoot, CWD)).toBe(true);
   });
 });
 

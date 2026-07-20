@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { load } from "js-yaml";
-import { resolveConfig } from "../src/config.js";
+import { compileConfig, resolveConfig } from "../src/config.js";
 
 const PRESETS_DIR = resolve(import.meta.dir, "..", "presets");
 
@@ -121,6 +121,55 @@ describe("import directive", () => {
     expect(config._sources).toHaveLength(1);
     expect(config._sources[0]?.endsWith("fencepost.yaml")).toBe(true);
   });
+});
+
+async function withUserHome<T>(yaml: string | null, fn: () => Promise<T>): Promise<T> {
+  const userHome = await mkdtemp(join(tmpdir(), "fencepost-userhome-"));
+  if (yaml !== null) {
+    await mkdir(join(userHome, ".claude"), { recursive: true });
+    await writeFile(join(userHome, ".claude", "fencepost.yaml"), yaml, "utf8");
+  }
+  const prevHome = process.env["FENCEPOST_HOME"];
+  process.env["FENCEPOST_HOME"] = userHome;
+  try {
+    return await fn();
+  } finally {
+    if (prevHome === undefined) delete process.env["FENCEPOST_HOME"];
+    else process.env["FENCEPOST_HOME"] = prevHome;
+  }
+}
+
+describe("'user' import token", () => {
+  it("pulls in the user-level config as an explicit base layer", async () =>
+    withUserHome("tools:\n  allow:\n    - MyUserTool\n", async () => {
+      const tmp = await projectWithConfig("import:\n  - user\ndefault: ask\ntools:\n  allow:\n    - MyProjectTool\n");
+      const config = await resolveConfig(tmp);
+      expect(config.tools.allow).toContain("MyUserTool");
+      expect(config.tools.allow).toContain("MyProjectTool");
+      expect(config._sources.some((s) => s.endsWith(join(".claude", "fencepost.yaml")))).toBe(true);
+    }));
+
+  it("the project's own rules win over the pulled-in user layer", async () =>
+    withUserHome("default: deny\n", async () => {
+      const tmp = await projectWithConfig("import:\n  - user\ndefault: ask\n");
+      const config = await resolveConfig(tmp);
+      expect(config.default).toBe("ask");
+    }));
+
+  it("without the 'user' token, the user-level file is not pulled in", async () =>
+    withUserHome("tools:\n  allow:\n    - MyUserTool\n", async () => {
+      const tmp = await projectWithConfig("default: ask\n");
+      const config = await resolveConfig(tmp);
+      expect(config.tools.allow).not.toContain("MyUserTool");
+    }));
+
+  it("warns and continues when 'user' is imported but no user-level config exists", async () =>
+    withUserHome(null, async () => {
+      const tmp = await projectWithConfig("import:\n  - user\ndefault: ask\n");
+      const c = await compileConfig(tmp);
+      expect(c.ok).toBe(true);
+      expect(c.warnings.some((w) => /user-level config/.test(w.message))).toBe(true);
+    }));
 });
 
 describe("preset metadata", () => {

@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { resolve, dirname, basename } from "node:path";
+import { realpathSync } from "node:fs";
 import { homedir } from "node:os";
 
 /**
@@ -19,10 +20,36 @@ export function resolvePath(token: string, cwd: string): string {
   return resolve(cwd, expandHome(t));
 }
 
+/**
+ * Resolve symlinks in the longest existing prefix of an absolute path, then
+ * reattach any not-yet-created trailing segments lexically (they can't be
+ * symlinks if nothing exists there yet). Guards containment checks against a
+ * root, or anything inside it (like a planted `escape -> ~/.ssh` symlink),
+ * being a symlink to outside the sandbox: a purely lexical prefix check would
+ * approve `/tmp/claude/escape/authorized_keys` as "under root" even though
+ * the write actually lands in ~/.ssh.
+ */
+function realish(absPath: string): string {
+  const trailing: string[] = [];
+  let cur = absPath;
+  for (;;) {
+    try {
+      cur = realpathSync(cur);
+      break;
+    } catch {
+      const parent = dirname(cur);
+      if (parent === cur) break; // hit filesystem root without resolving; give up as-is
+      trailing.unshift(basename(cur));
+      cur = parent;
+    }
+  }
+  return resolve(cur, ...trailing);
+}
+
 /** True if `target` is the root dir itself or nested under it. */
 export function isUnderRoot(target: string, root: string, cwd: string): boolean {
-  const t = resolvePath(target, cwd);
-  const r = resolvePath(root, cwd);
+  const t = realish(resolvePath(target, cwd));
+  const r = realish(resolvePath(root, cwd));
   return t === r || t.startsWith(r + "/");
 }
 

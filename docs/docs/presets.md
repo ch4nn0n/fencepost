@@ -39,6 +39,20 @@ default: ask
 
 It's deduped against any presets you also name explicitly (`[git, all]` loads `git` once), and your own config still layers on top. Note that `all` **broadens what's allowed** — it silently allows every tool the bundled presets cover (`kubectl`, `helm`, `ansible-playbook`, browser control, web fetches, and so on). Prefer naming the presets you actually use unless you genuinely want the full surface.
 
+### Pulling in your user config with `user`
+
+`user` is a second reserved token, alongside `all`. It isn't a preset — it resolves to your **user-level** config layer (`~/.claude/fencepost/config/`, else `~/.claude/fencepost.yaml`) and merges it in as a base, same as any preset:
+
+```yaml title=".claude/fencepost.yaml"
+import:
+  - git
+  - user
+
+default: ask
+```
+
+Project config normally shadows user-level config entirely (see [Config files → resolution order](./configuration/config-files.md#resolution-order)), so this token exists for when you deliberately want your personal rules layered under a project's own — it's an explicit opt-in, not automatic inheritance. See [Config files → pulling in your user-level config](./configuration/config-files.md#pulling-in-your-user-level-config) for details.
+
 ## How merging works
 
 ```
@@ -57,7 +71,7 @@ Because your config is applied last, your rules layer over the presets and your 
 
 - **Names are sandboxed.** A preset name must match `^[a-zA-Z0-9_-]+$`. Anything with a path separator or `.` (e.g. `../../etc/passwd`) is rejected, so `import:` can never escape the presets directory.
 - **Typos never lock you out.** An unknown or missing preset is logged at `warn` and skipped — consistent with the fail-open posture for *missing* config.
-- **One level deep.** Nested imports (a preset importing another) are not processed.
+- **One level deep.** Nested imports (a preset importing another, or an `import:` inside your user-level config) are not processed.
 - **Lookup order** for the presets directory: `$FENCEPOST_PRESETS_DIR` (set by the plugin hook wrapper) → `<binary dir>/../presets` → `<src>/../presets` (development).
 
 Imported preset paths show up in [provenance](./reference/cli-and-audit.md), listed before your own files, so `fencepost config` and `/audit` show exactly which preset contributed each rule.

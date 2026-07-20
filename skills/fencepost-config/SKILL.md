@@ -18,9 +18,9 @@ node "${CLAUDE_PLUGIN_ROOT}"/dist/index.js config
 
 It prints the source files, errors/warnings, and the fully-merged effective config.
 
-**Resolution is first-match-wins, not additive.** Fencepost checks `{cwd}/.claude/fencepost/config/` → `{cwd}/.claude/fencepost.yaml` → `~/.claude/fencepost/config/` → `~/.claude/fencepost.yaml` and uses **only the first one found**. Layers do not merge with each other. Creating a project config therefore silently disables the user's `~/.claude` rules for that project — they are not inherited. If they want personal rules plus project rules, copy the relevant ones in (or publish them as a preset and `import:` it). Flag this to the user before creating a project config over an existing user-level one; it is the single most common surprise.
+**Resolution is first-match-wins, not additive.** Fencepost checks `{cwd}/.claude/fencepost/config/` → `{cwd}/.claude/fencepost.yaml` → `~/.claude/fencepost/config/` → `~/.claude/fencepost.yaml` and uses **only the first one found**. Layers do not merge with each other. Creating a project config therefore silently disables the user's `~/.claude` rules for that project — they are not inherited. Flag this to the user before creating a project config over an existing user-level one; it is the single most common surprise.
 
-The only additive mechanism is `import:` — bundled presets merge as a base layer beneath the host file's own rules, which win on conflict.
+The additive mechanism is `import:` — bundled presets (or the reserved `user` token, or `all` for every bundled preset) merge as a base layer beneath the host file's own rules, which win on conflict. If the user wants their personal rules plus project rules, add `import: [user]` to the project file instead of copying rules in by hand.
 
 ## 2. Day 1 — scaffold
 
@@ -34,7 +34,7 @@ The only additive mechanism is `import:` — bundled presets merge as a base lay
 ls "${CLAUDE_PLUGIN_ROOT}"/presets/*.yaml   # dev clone: ls presets/*.yaml
 ```
 
-`import: [all]` takes every bundled preset. Start there if the user wants broad coverage, then narrow.
+`import: [all]` takes every bundled preset. Start there if the user wants broad coverage, then narrow. `import: [user]` pulls in the user's own `~/.claude` config as a base layer, for a project config that should extend personal rules rather than shadow them.
 
 **Knobs.** Touch only what the user asks for or what is needed for a working config:
 

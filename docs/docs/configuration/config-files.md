@@ -17,7 +17,7 @@ For a given project (`cwd` comes from the hook input), fencepost loads the **fir
 4. Else **`~/.claude/fencepost.yaml`** → user-level single file.
 5. Else → built-in defaults (`default: ask`, empty rule lists).
 
-Within each level the directory form wins if it exists, so you can migrate from a single file to a directory without losing anything. Project config completely shadows user-level config — the layers are not merged with each other.
+Within each level the directory form wins if it exists, so you can migrate from a single file to a directory without losing anything. Project config completely shadows user-level config — the layers are not merged with each other, unless you opt in with `import: [user]` (see below).
 
 Setting `$FENCEPOST_HOME` overrides where the user-level layers (3 and 4) are looked up, replacing `~`. It exists for test isolation and unusual setups; normally leave it unset.
 
@@ -89,6 +89,22 @@ In short: **scalars = set-wins, arrays = concatenate.** Duplicate entries in con
 [Presets](../presets.md) you `import:` are merged *first*, as a base layer; your own config is applied **on top**, so your rules and your `default` always win. Tier precedence (`deny > checks > ask > allow`) then decides outcomes at evaluation time.
 :::
 
+### Pulling in your user-level config
+
+Project config normally shadows user-level config entirely (see [Resolution order](#resolution-order)) — a project's `.claude/fencepost.yaml` is a self-contained policy, so everyone who runs it gets the same rules regardless of what's in their own `~/.claude/fencepost.yaml`.
+
+If you want your personal rules layered in too, opt in explicitly with the reserved `user` import token, alongside any presets:
+
+```yaml title=".claude/fencepost.yaml"
+import:
+  - git
+  - user
+
+default: ask
+```
+
+`user` resolves to your user-level layer (`~/.claude/fencepost/config/` conf.d, else `~/.claude/fencepost.yaml`) and merges it in as a base, same as a preset — your project's own rules and `default` still win. Like presets, it's non-recursive: an `import:` list inside your user-level file is ignored. If no user-level config exists, `user` is a no-op (a warning is logged, nothing fails).
+
 ## Provenance
 
 The resolved config tracks **which file each rule came from**. This powers debugging ("why is this denied?") and makes the [`/audit`](../reference/cli-and-audit.md) output actionable ("dead rule in `30-kubectl.yaml`"). Imported preset paths are recorded too, listed before your own files.
@@ -104,7 +120,7 @@ fencepost config    # prints sources + effective config
 The full config shape (see the [configuration reference](../reference/configuration.md) for every field, default, and merge rule):
 
 ```yaml
-import: [ ... ]            # preset names to layer in as a base
+import: [ ... ]            # preset names to layer in as a base ('all', 'user' reserved)
 default: ask              # allow | deny | ask — fallthrough decision
 onError: ask              # allow | deny | ask — when a command can't be checked
 
