@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.11.0](https://github.com/ch4nn0n/fencepost/compare/v0.10.0...v0.11.0) (2026-07-20)
+
+
+### Features
+
+* **filesystem:** allow bash -n / sh -n syntax checks ([8a4fe2f](https://github.com/ch4nn0n/fencepost/commit/8a4fe2fb1810ef9e391fd9db2d738bd074e48898))
+* **helmfile:** strip more connection/behaviour flags in normalise ([633d246](https://github.com/ch4nn0n/fencepost/commit/633d24682fdab2110db6dfd122f658ac14a2095d))
+* **skills:** add fencepost-config skill for setup and rule tuning ([98870c7](https://github.com/ch4nn0n/fencepost/commit/98870c7b806826a40cb35a3c6f6b1ad5491b8d87))
+
+
+### Bug Fixes
+
+* **output:** colour the ask-prompt bullet to match Fencepost ochre ([252882b](https://github.com/ch4nn0n/fencepost/commit/252882b1206a56b6b837f6ffa84b33b028a65b77))
+* **output:** don't double the full stop before the deny alternative ([60dd65b](https://github.com/ch4nn0n/fencepost/commit/60dd65b32567ad3e09f9962717e676b5e294aa09))
+* **skills:** correct evaluate guidance in fencepost-preset ([5c8f4fd](https://github.com/ch4nn0n/fencepost/commit/5c8f4fd8b66b7dc600516481d789561428993373))
+
 ## [0.10.0](https://github.com/ch4nn0n/fencepost/compare/v0.9.0...v0.10.0) (2026-07-17)
 
 

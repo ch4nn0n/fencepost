@@ -7391,9 +7391,10 @@ function formatReason(result) {
     if (result.chained) {
       return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
     }
-    let reason = `${prefix} blocked — ${result.reason}`;
+    const body2 = result.reason.trimEnd();
+    let reason = `${prefix} blocked — ${body2}`;
     if (result.alternative) {
-      reason += `. Use this instead: ${result.alternative}`;
+      reason += `${/[.!?…]$/.test(body2) ? "" : "."} Use this instead: ${result.alternative}`;
     }
     return reason;
   }
@@ -7401,7 +7402,7 @@ function formatReason(result) {
     const rawParts = result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : []);
     const parts2 = rawParts.length > 0 ? rawParts : ["this command"];
     return `${prefix}
-${parts2.map((p) => `- ${summarise(p)}`).join(`
+${parts2.map((p) => `${BOLD_OCHRE}-${RESET} ${summarise(p)}`).join(`
 `)}`;
   }
   return result.reason;

@@ -53,10 +53,13 @@ Use the bundled CLI to confirm the merge resolved cleanly and the decisions land
 # Confirm the config is valid and see the effective merged rules + provenance.
 node "${CLAUDE_PLUGIN_ROOT}"/dist/index.js verify
 
-# Spot-check specific commands. Empty output means "allow" (silent fast path);
-# an "ask"/"deny" decision prints a JSON permissionDecision.
-echo '{"tool_name":"Bash","tool_input":{"command":"<tool> <subcommand> ..."},"cwd":"'"$PWD"'"}' \
-  | node "${CLAUDE_PLUGIN_ROOT}"/dist/index.js evaluate
+# Spot-check specific commands. Every outcome prints a JSON permissionDecision,
+# including "allow" — empty output means something went wrong, not "permitted".
+#
+# Pass the payload as a FILE, not `echo '...' | evaluate`: piping puts the
+# command text on your own shell command line, where fencepost's rules match it
+# and block the probe (testing a force-push rule trips the force-push rule).
+node "${CLAUDE_PLUGIN_ROOT}"/dist/index.js evaluate < payload.json
 ```
 
 Run a representative command from each tier (one allow, one ask, one deny) and confirm the result.
