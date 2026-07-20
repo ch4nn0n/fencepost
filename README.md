@@ -1,10 +1,16 @@
-# fencepost
+<p align="center">
+  <img src="./docs/static/img/app-icon.svg" width="96" alt="fencepost logo">
+</p>
 
-**A configurable permission gate for every Claude Code tool call.**
+<h1 align="center">fencepost</h1>
 
-[![CI](https://github.com/ch4nn0n/fencepost/actions/workflows/ci.yml/badge.svg)](https://github.com/ch4nn0n/fencepost/actions/workflows/ci.yml)
-[![Docs](https://github.com/ch4nn0n/fencepost/actions/workflows/docs.yml/badge.svg)](https://ch4nn0n.github.io/fencepost/)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
+<p align="center"><strong>A configurable permission gate for every Claude Code tool call.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/ch4nn0n/fencepost/actions/workflows/ci.yml"><img src="https://github.com/ch4nn0n/fencepost/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://ch4nn0n.github.io/fencepost/"><img src="https://github.com/ch4nn0n/fencepost/actions/workflows/docs.yml/badge.svg" alt="Docs"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3"></a>
+</p>
 
 fencepost installs as a [Claude Code](https://docs.claude.com/en/docs/claude-code) plugin and runs on the `PreToolUse` hook (plus `PostToolUse` for secrets redaction), so it sees **every tool call before it happens** and evaluates it against a YAML rule set you control. Each call resolves to one of three decisions:
 
@@ -15,6 +21,12 @@ fencepost installs as a [Claude Code](https://docs.claude.com/en/docs/claude-cod
 | **deny** | The tool is blocked, with an actionable alternative. | Claude |
 
 A denial isn't a dead end: fencepost steers Claude toward the suggested alternative instead of letting it retry the same wall.
+
+<p align="center">
+  <img src="./docs/static/img/demo.gif" alt="fencepost intercepting a compound git command: git add . is allowed silently, while git branch -D and git stash drop are listed in a real approval prompt" width="800">
+</p>
+
+A compound command like `git add . && git branch -D old-feature && git stash drop` is evaluated part by part: the allowed `git add .` runs silently, and only the two parts that need a decision show up in the prompt.
 
 fencepost is meant to **be** your permission layer. Run Claude Code in [`bypassPermissions` mode](https://ch4nn0n.github.io/fencepost/docs/concepts/permission-modes) and the YAML rule set becomes the single gate — Claude's native prompts step aside while fencepost's `allow`/`ask`/`deny` still decide every call.
 
