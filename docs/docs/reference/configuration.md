@@ -44,7 +44,7 @@ secrets: { ... }
 
 | Key | Type | Default | Merge | Notes |
 |-----|------|---------|-------|-------|
-| `import` | list of preset names | `[]` | n/a | Bare identifiers only (`[a-zA-Z0-9_-]+`), resolved against the bundled [presets](../presets.md). Nested imports inside a preset are ignored. |
+| `import` | list of preset names | `[]` | n/a | Bare identifiers only (`[a-zA-Z0-9_-]+`), resolved against the bundled [presets](../presets.md). `all` expands to every bundled preset; `user` pulls in your user-level `~/.claude` config as a base layer. Nested imports (inside a preset or the user-level file) are ignored. |
 | `default` | `allow` \| `deny` \| `ask` | `ask` | set-wins | Decision when no rule matches. The last explicitly set value wins; a layer that omits `default` inherits it (mirrors `onError`). |
 | `onError` | `allow` \| `deny` \| `ask` | `ask` | set-wins | Used when fencepost runs but can't reach a decision (e.g. unparseable Bash). A broken *config* always fails closed regardless. See [Failure posture](../concepts/failure-posture.md). |
 | `tools` | object | see below | per-field | Tool and Bash rules. |

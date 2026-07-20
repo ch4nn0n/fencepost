@@ -540,7 +540,8 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
 // ---- Imports (bundled presets) ----
 
 // Preset names are bare identifiers, never paths. This prevents an `import`
-// entry from reaching outside the presets directory.
+// entry from reaching outside the presets directory. `all` and `user` are
+// reserved tokens handled separately, before names reach this check.
 const PRESET_NAME_RE = /^[a-zA-Z0-9_-]+$/;
 
 /** Extract the top-level `import:` list from raw parsed YAML. */
@@ -621,12 +622,23 @@ async function expandImports(names: string[]): Promise<string[]> {
 /**
  * Load and merge the named presets into a single base config. Presets are
  * merged in listed order; nested imports inside a preset are ignored. The
- * `all` token expands to every bundled preset (see expandImports).
+ * `all` token expands to every bundled preset (see expandImports); the
+ * `user` token pulls in the user-level config layer (see loadCandidateLayer).
  */
 async function loadImports(names: string[], importedFrom: string): Promise<{ config: FencepostConfig; sources: string[] }> {
   let merged = DEFAULT_CONFIG;
   const sources: string[] = [];
   for (const name of await expandImports(names)) {
+    if (name === "user") {
+      const layer = await loadCandidateLayer(userConfigCandidate());
+      if (!layer) {
+        note("warning", importedFrom, "imported 'user' but no user-level config was found");
+        continue;
+      }
+      merged = mergeConfigs(merged, layer.config);
+      sources.push(...layer.sources);
+      continue;
+    }
     const path = await resolvePreset(name, importedFrom);
     if (!path) continue;
     const loaded = await loadYamlFile(path);
@@ -758,6 +770,37 @@ export class CompiledConfig {
 
 // ---- Public API ----
 
+/** The user-level config candidate: conf.d dir and single-file fallback path. */
+function userConfigCandidate(): { confDir: string; singleFile: string } {
+  // FENCEPOST_HOME overrides where user-level config is looked up, so tests
+  // (and unusual setups) don't pick up the real ~/.claude/fencepost.yaml.
+  const home = process.env["FENCEPOST_HOME"] || homedir();
+  return { confDir: join(home, ".claude", "fencepost", "config"), singleFile: join(home, ".claude", "fencepost.yaml") };
+}
+
+/**
+ * Load one candidate location: the conf.d directory if it has any YAML files,
+ * else the single file if it exists. Null if neither is present. Even a
+ * present-but-broken file is reported (loaded === null but the file still
+ * becomes the sole source), so callers can point at it and fail closed.
+ */
+async function loadCandidateLayer(candidate: {
+  confDir: string;
+  singleFile: string;
+}): Promise<{ config: FencepostConfig; sources: string[]; imports: string[] } | null> {
+  const dirResult = await loadConfDir(candidate.confDir);
+  if (dirResult) return dirResult;
+  if (existsSync(candidate.singleFile)) {
+    const loaded = await loadYamlFile(candidate.singleFile);
+    return {
+      config: loaded?.config ?? DEFAULT_CONFIG,
+      sources: [candidate.singleFile],
+      imports: loaded?.imports ?? [],
+    };
+  }
+  return null;
+}
+
 /**
  * Resolution order:
  * 1. {cwd}/.claude/fencepost/config/ — conf.d style
@@ -783,35 +826,19 @@ export async function compileConfig(cwd: string): Promise<CompiledConfig> {
 }
 
 async function resolveInternal(cwd: string): Promise<ResolvedConfig> {
-  // FENCEPOST_HOME overrides where user-level config is looked up, so tests
-  // (and unusual setups) don't pick up the real ~/.claude/fencepost.yaml.
-  const home = process.env["FENCEPOST_HOME"] || homedir();
   const claudeDir = join(resolve(cwd), ".claude");
 
   const candidates = [
     { confDir: join(claudeDir, "fencepost", "config"), singleFile: join(claudeDir, "fencepost.yaml") },
-    { confDir: join(home, ".claude", "fencepost", "config"), singleFile: join(home, ".claude", "fencepost.yaml") },
+    userConfigCandidate(),
   ];
 
   let host: { config: FencepostConfig; sources: string[]; imports: string[]; from: string } | null = null;
 
-  for (const { confDir, singleFile } of candidates) {
-    const dirResult = await loadConfDir(confDir);
-    if (dirResult) {
-      host = { ...dirResult, from: confDir };
-      break;
-    }
-    if (existsSync(singleFile)) {
-      const loaded = await loadYamlFile(singleFile);
-      // Even when broken (loaded === null) we treat this as "config present":
-      // an error was recorded and we stop searching, so the run fails closed.
-      // List the file either way so the report points at it.
-      host = {
-        config: loaded?.config ?? DEFAULT_CONFIG,
-        sources: [singleFile],
-        imports: loaded?.imports ?? [],
-        from: singleFile,
-      };
+  for (const candidate of candidates) {
+    const result = await loadCandidateLayer(candidate);
+    if (result) {
+      host = { ...result, from: result.sources[0] ?? candidate.confDir };
       break;
     }
   }
