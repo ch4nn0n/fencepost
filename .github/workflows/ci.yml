@@ -15,14 +15,10 @@ concurrency:
 
 jobs:
   test:
-    # Name is a required status check in branch protection; keep it stable
-    # even though this job now also runs CodeQL.
     name: Test & build
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      security-events: write # CodeQL SARIF upload
-      actions: read
     steps:
       - uses: actions/checkout@v6
 
@@ -49,6 +45,16 @@ jobs:
         run: |
           echo '{"tool_name":"Read","tool_input":{},"session_id":"ci","cwd":"/tmp","hook_event_name":"PreToolUse","tool_use_id":"x"}' \
             | node dist/index.js evaluate
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF upload
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
