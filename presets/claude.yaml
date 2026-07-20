@@ -35,6 +35,7 @@ tools:
     - ToolSearch
     - Agent
     - TaskStop
+    - AskUserQuestion
 
   bash:
     # Structured rules (feature 20) over the parsed command.
