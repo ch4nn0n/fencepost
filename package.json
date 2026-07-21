@@ -36,6 +36,7 @@
     "docs:floors": "bun run scripts/sync-secrets-docs.ts",
     "docs:floors:check": "bun run scripts/sync-secrets-docs.ts --check",
     "dev": "bun run src/index.ts",
+    "demo:record": "bash demo/record.sh",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
