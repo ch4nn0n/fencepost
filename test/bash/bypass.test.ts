@@ -152,3 +152,48 @@ describe("xargs is unwrapped", () => {
     expect(r.decision).toBe("deny");
   });
 });
+
+// Vuln 5: timeout execs its argv past DURATION; the wrapped command must
+// face the full rule set, same as xargs.
+describe("timeout is unwrapped", () => {
+  const c = cfg({ deny: ["rm", "git clean -xfd"], allow: ["timeout", "grep", "echo"] });
+
+  it("allows timeout grep when grep is allowed", async () => {
+    expect((await evaluateBashAst("timeout 5 grep foo file", c, CWD)).decision).toBe("allow");
+  });
+
+  it("denies timeout rm when rm is denied", async () => {
+    expect((await evaluateBashAst("timeout 10 rm -rf /x", c, CWD)).decision).toBe("deny");
+  });
+
+  it("skips recognised flags, separate and bundled, to find DURATION and the command", async () => {
+    expect((await evaluateBashAst("timeout -k 5 10 grep foo", c, CWD)).decision).toBe("allow");
+    expect((await evaluateBashAst("timeout -v -s TERM 10 grep foo", c, CWD)).decision).toBe("allow");
+    expect((await evaluateBashAst("timeout --kill-after=5 --preserve-status 10 grep foo", c, CWD)).decision).toBe(
+      "allow",
+    );
+    expect((await evaluateBashAst("timeout --kill-after=5 10 rm -rf /x", c, CWD)).decision).toBe("deny");
+  });
+
+  it("falls back to onError on unrecognised flags", async () => {
+    expect((await evaluateBashAst("timeout --foo 10 grep foo", c, CWD)).decision).toBe("ask");
+    const r = await evaluateBashAst(
+      "timeout --foo 10 grep foo",
+      cfg({ allow: ["timeout", "grep"] }, { onError: "deny" }),
+      CWD,
+    );
+    expect(r.decision).toBe("deny");
+  });
+
+  it("unwraps a shell wrapper handed to timeout without losing the -c payload", async () => {
+    expect((await evaluateBashAst('timeout 5 sh -c "git clean -xfd"', cfg({ deny: ["git clean -xfd"], allow: ["timeout", "sh"] }), CWD)).decision).toBe(
+      "deny",
+    );
+  });
+
+  it("fails closed on absurdly deep timeout nesting", async () => {
+    const cmd = "timeout 5 ".repeat(10) + "grep foo";
+    const r = await evaluateBashAst(cmd, cfg({ allow: ["timeout", "grep"] }, { onError: "deny" }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+});

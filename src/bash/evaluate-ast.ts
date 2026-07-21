@@ -82,10 +82,11 @@ const XARGS_PLAIN_LONGS = new Set([
   "--version",
 ]);
 
-type XargsPayload =
+// null: not a recognised wrapper, or no inner command (bare `xargs` defaults to echo).
+type WrapperPayload =
   | { kind: "command"; cmd: ExtractedCommand }
   | { kind: "opaque"; flag: string }
-  | null; // not xargs, or no inner command (bare `xargs` defaults to echo)
+  | null;
 
 /**
  * Extract the command an `xargs` invocation will run, as a structured command
@@ -99,7 +100,7 @@ type XargsPayload =
  * and a wrong guess can dress a dangerous command up as an allowed one
  * (`xargs -E grep rm -rf /` runs rm, not grep).
  */
-function xargsInnerCommand(cmd: ExtractedCommand): XargsPayload {
+function xargsInnerCommand(cmd: ExtractedCommand): WrapperPayload {
   if (cmd.name !== "xargs") return null;
   const toks = cmd.args;
   let i = 0;
@@ -134,6 +135,57 @@ function xargsInnerCommand(cmd: ExtractedCommand): XargsPayload {
     }
   }
   const rest = toks.slice(i);
+  const name = rest[0];
+  if (!name) return null;
+  return {
+    kind: "command",
+    cmd: { text: rest.join(" "), name, args: rest.slice(1), redirects: [], heredoc: null },
+  };
+}
+
+// GNU timeout option surface, used to find where DURATION (and past it, the
+// wrapped command) starts.
+const TIMEOUT_VALUE_FLAGS = new Set(["k", "s"]);
+const TIMEOUT_PLAIN_FLAGS = new Set(["v"]);
+const TIMEOUT_VALUE_LONGS = new Set(["--kill-after", "--signal"]);
+const TIMEOUT_PLAIN_LONGS = new Set(["--preserve-status", "--foreground", "--verbose", "--help", "--version"]);
+
+/**
+ * Extract the command a `timeout` invocation will run, the same way
+ * xargsInnerCommand does: timeout execs its argv directly without a shell, so
+ * the command is built from argv tokens rather than re-parsed as a joined
+ * string. Any unrecognised flag makes the invocation opaque, same reasoning
+ * as xargs: a wrong guess about where DURATION starts can misplace the
+ * command and dress a dangerous one up as allowed.
+ */
+function timeoutInnerCommand(cmd: ExtractedCommand): WrapperPayload {
+  if (cmd.name !== "timeout") return null;
+  const toks = cmd.args;
+  let i = 0;
+  while (i < toks.length) {
+    const t = toks[i]!;
+    if (!t.startsWith("-") || t === "-") break; // DURATION starts here
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=");
+      const name = eq === -1 ? t : t.slice(0, eq);
+      if (TIMEOUT_PLAIN_LONGS.has(name)) i += 1;
+      else if (TIMEOUT_VALUE_LONGS.has(name)) i += eq === -1 ? 2 : 1;
+      else return { kind: "opaque", flag: t };
+    } else {
+      let consumesNext = false;
+      for (let j = 1; j < t.length; j++) {
+        const ch = t[j]!;
+        if (TIMEOUT_PLAIN_FLAGS.has(ch)) continue;
+        if (TIMEOUT_VALUE_FLAGS.has(ch)) {
+          consumesNext = j === t.length - 1;
+          break;
+        }
+        return { kind: "opaque", flag: t };
+      }
+      i += consumesNext ? 2 : 1;
+    }
+  }
+  const rest = toks.slice(i + 1); // toks[i] is DURATION; the command follows it
   const name = rest[0];
   if (!name) return null;
   return {
@@ -230,12 +282,46 @@ function evaluateCommand(
   return { decision: config.default, reason: `No matching rule; default is ${config.default}`, matchedInput: text };
 }
 
+/** Resolve a structured wrapper payload (xargs/timeout) into results: opaque
+ * flags and over-deep nesting apply the onError posture, otherwise the
+ * wrapped command is evaluated recursively in its own right. */
+async function evaluateWrapperPayload(
+  payload: WrapperPayload,
+  label: string,
+  cmdText: string,
+  config: FencepostConfig,
+  cwd: string,
+  depth: number,
+  results: EvalResult[],
+): Promise<void> {
+  if (!payload) return;
+  const onError = config.onError ?? "ask";
+  if (payload.kind === "opaque") {
+    results.push({
+      decision: onError,
+      reason: `Unrecognised ${label} flag ${payload.flag}; cannot tell where the inner command starts.`,
+      matchedInput: cmdText,
+    });
+    return;
+  }
+  if (depth >= MAX_WRAPPER_DEPTH) {
+    logger.warn({ command: cmdText, depth }, `${label} nesting too deep, applying onError posture`);
+    results.push({
+      decision: onError,
+      reason: "Command nests wrappers too deeply to analyse safely.",
+      matchedInput: cmdText,
+    });
+    return;
+  }
+  await evaluateExtracted(payload.cmd, config, cwd, depth + 1, results);
+}
+
 /**
  * Evaluate one extracted command plus anything it wraps. Shell bodies carried
  * by `sh -c` / `bash -c` / `eval` are re-parsed and evaluated so their inner
  * commands face the full rule set instead of riding through as a string
- * argument; the argv handed to `xargs` is evaluated as a command in its own
- * right for the same reason.
+ * argument; the argv handed to `xargs` or `timeout` is evaluated as a command
+ * in its own right for the same reason.
  */
 async function evaluateExtracted(
   cmd: ExtractedCommand,
@@ -250,27 +336,8 @@ async function evaluateExtracted(
   const inner = shellWrapperCode(cmd);
   if (inner) results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
 
-  const payload = xargsInnerCommand(cmd);
-  if (!payload) return;
-  const onError = config.onError ?? "ask";
-  if (payload.kind === "opaque") {
-    results.push({
-      decision: onError,
-      reason: `Unrecognised xargs flag ${payload.flag}; cannot tell where the inner command starts.`,
-      matchedInput: cmd.text,
-    });
-    return;
-  }
-  if (depth >= MAX_WRAPPER_DEPTH) {
-    logger.warn({ command: cmd.text, depth }, "xargs nesting too deep, applying onError posture");
-    results.push({
-      decision: onError,
-      reason: "Command nests wrappers too deeply to analyse safely.",
-      matchedInput: cmd.text,
-    });
-    return;
-  }
-  await evaluateExtracted(payload.cmd, config, cwd, depth + 1, results);
+  await evaluateWrapperPayload(xargsInnerCommand(cmd), "xargs", cmd.text, config, cwd, depth, results);
+  await evaluateWrapperPayload(timeoutInnerCommand(cmd), "timeout", cmd.text, config, cwd, depth, results);
 }
 
 /** Evaluate loose redirects (not bound to a single command) on their own. */
