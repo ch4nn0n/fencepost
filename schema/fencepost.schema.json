@@ -225,7 +225,8 @@
             "python": { "$ref": "#/definitions/interpreterConfig" },
             "javascript": { "$ref": "#/definitions/interpreterConfig" }
           }
-        }
+        },
+        "ssh": { "$ref": "#/definitions/sshConfig" }
       }
     },
     "redirectRule": {
@@ -328,6 +329,23 @@
         "description": { "type": "string", "description": "Shown to the model when the rule fires." }
       },
       "required": ["match", "decision"]
+    },
+    "sshConfig": {
+      "type": "object",
+      "description": "Host allowlisting for the ssh wrapper. Unset by default: any destination proceeds to ask/allow based on the remote command's own rules.",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "type": "array",
+          "description": "Destination globs allowed to connect to, e.g. \"ops@10.0.40.*\". If non-empty, any other destination requires approval.",
+          "items": { "type": "string" }
+        },
+        "deny": {
+          "type": "array",
+          "description": "Destination globs denied outright, checked before allow.",
+          "items": { "type": "string" }
+        }
+      }
     },
     "writeRule": {
       "type": "object",

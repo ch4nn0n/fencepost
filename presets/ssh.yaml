@@ -1,0 +1,22 @@
+# Fencepost preset: ssh
+
+meta:
+  title: SSH
+  description: >-
+    Denies connection options that run arbitrary local code as a side effect
+    of connecting (ProxyCommand, LocalCommand). The remote command itself is
+    unwrapped by fencepost's core evaluator and checked against every other
+    preset's rules, same as a local shell wrapper. Host allowlisting
+    (bash.ssh.allow/deny) is opt-in and left unset here since it's specific
+    to your own infrastructure — add it in your own config, e.g.:
+    tools.bash.ssh.allow: ["ops@10.0.40.*"].
+
+tools:
+  bash:
+    checks:
+      - test: '-o\s*(ProxyCommand|LocalCommand)='
+        description: "ProxyCommand/LocalCommand run an arbitrary local command as a side effect of connecting, invisible to any rule checking the remote command."
+        alternative: "Connect directly, or run the local command as its own separate step instead."
+      - test: '-o\s*PermitLocalCommand=\s*yes'
+        description: "Enables LocalCommand for this connection, a local-code-execution side channel."
+        alternative: "Leave PermitLocalCommand unset."

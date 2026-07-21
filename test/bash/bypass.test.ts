@@ -197,3 +197,109 @@ describe("timeout is unwrapped", () => {
     expect(r.decision).toBe("deny");
   });
 });
+
+// Vuln 6: ssh hands its trailing command to the remote shell, which must
+// face the full rule set, and a bare/opaque invocation must fail closed
+// rather than silently connecting.
+describe("ssh is unwrapped", () => {
+  const c = cfg({ deny: ["rm", "git clean -xfd"], allow: ["grep", "echo"] });
+
+  it("allows a remote command that clears the rules on its own merits", async () => {
+    const r = await evaluateBashAst('ssh ops@10.0.40.12 "grep foo file"', c, CWD);
+    expect(r.decision).toBe("allow");
+  });
+
+  it("denies a remote command that is denied on its own merits", async () => {
+    const r = await evaluateBashAst("ssh ops@10.0.40.12 rm -rf /x", c, CWD);
+    expect(r.decision).toBe("deny");
+  });
+
+  it("skips recognised connection flags to find the destination and command", async () => {
+    const r = await evaluateBashAst('ssh -o ConnectTimeout=5 -p 22 -i /key ops@10.0.40.12 "grep foo file"', c, CWD);
+    expect(r.decision).toBe("allow");
+  });
+
+  it("keeps a bare interactive session at the default posture", async () => {
+    const r = await evaluateBashAst("ssh ops@10.0.40.12", c, CWD);
+    expect(r.decision).toBe("ask"); // no wrapped command to prove the wrapper-allow marker
+  });
+
+  it("falls back to onError on an unrecognised flag", async () => {
+    // -Z isn't a real ssh flag; stands in for anything outside the tables.
+    expect((await evaluateBashAst("ssh -Z ops@10.0.40.12 grep foo", c, CWD)).decision).toBe("ask");
+    const r = await evaluateBashAst("ssh -F /tmp/evil.cfg ops@10.0.40.12 grep foo", cfg({ allow: ["grep"] }, { onError: "deny" }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+
+  it("treats a jump host (-J) as opaque, not silently skipped", async () => {
+    const r = await evaluateBashAst("ssh -J bastion ops@10.0.40.12 grep foo", cfg({ allow: ["grep"] }, { onError: "deny" }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+
+  it("unwraps a nested wrapper inside the remote command", async () => {
+    // xargs is argv-based (no quoting to lose across the ssh rejoin, unlike
+    // `sh -c "multi word"` — see the cwd/quoting note on evaluateSshPayload).
+    const r = await evaluateBashAst("ssh ops@10.0.40.12 xargs rm -rf", cfg({ deny: ["rm"] }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+
+  it("fails closed on absurdly deep ssh nesting", async () => {
+    let cmd = "grep foo";
+    for (let i = 0; i < 10; i++) cmd = `ssh ops@10.0.40.12 ${cmd}`;
+    const r = await evaluateBashAst(cmd, cfg({ allow: ["grep"] }, { onError: "deny" }), CWD);
+    expect(r.decision).toBe("deny");
+  });
+
+  describe("host allowlist (bash.ssh)", () => {
+    const withHosts = cfg({ allow: ["grep"], ssh: { allow: ["ops@10.0.40.*", "ops@10.0.20.*"] } });
+
+    it("proceeds on the remote command's own merits for an allowed host", async () => {
+      const r = await evaluateBashAst("ssh ops@10.0.40.12 grep foo file", withHosts, CWD);
+      expect(r.decision).toBe("allow");
+    });
+
+    it("asks for a destination outside the allowlist, even for a harmless command", async () => {
+      const r = await evaluateBashAst("ssh ops@203.0.113.9 grep foo file", withHosts, CWD);
+      expect(r.decision).toBe("ask");
+    });
+
+    it("asks for a bare interactive session to a destination outside the allowlist", async () => {
+      const r = await evaluateBashAst("ssh ops@203.0.113.9", withHosts, CWD);
+      expect(r.decision).toBe("ask");
+    });
+
+    it("denies a destination on the deny list even if it would also match allow", async () => {
+      const withDeny = cfg({
+        allow: ["grep"],
+        ssh: { allow: ["ops@10.0.40.*"], deny: ["ops@10.0.40.99"] },
+      });
+      const r = await evaluateBashAst("ssh ops@10.0.40.99 grep foo file", withDeny, CWD);
+      expect(r.decision).toBe("deny");
+    });
+
+    it("deny list wins over an otherwise-allowed host even with no allow list configured", async () => {
+      const denyOnly = cfg({ allow: ["grep"], ssh: { deny: ["ops@10.0.40.99"] } });
+      const r = await evaluateBashAst("ssh ops@10.0.40.99 grep foo file", denyOnly, CWD);
+      expect(r.decision).toBe("deny");
+    });
+  });
+});
+
+// Vuln 7: ssh connection options that execute local code as a side effect of
+// connecting must be caught even though the remote command looks harmless.
+describe("ssh ProxyCommand/LocalCommand are denied", () => {
+  const c = cfg({
+    allow: ["grep"],
+    checks: [
+      { test: "-o\\s*ProxyCommand=", description: "ProxyCommand runs local code" },
+      { test: "-o\\s*LocalCommand=", description: "LocalCommand runs local code" },
+    ],
+  });
+
+  for (const opt of ["ProxyCommand", "LocalCommand"]) {
+    it(`denies ${opt} even though the remote command is harmless`, async () => {
+      const r = await evaluateBashAst(`ssh -o ${opt}="rm -rf ~" ops@10.0.40.12 grep foo`, c, CWD);
+      expect(r.decision).toBe("deny");
+    });
+  }
+});

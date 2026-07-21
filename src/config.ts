@@ -21,6 +21,7 @@ import type {
   ImportRule,
   InterpreterConfig,
   SecretsConfig,
+  SshConfig,
   Decision,
 } from "./types.js";
 
@@ -41,6 +42,7 @@ const DEFAULT_BASH_CONFIG: BashConfig = {
   redirects: [],
   arguments: [],
   interpreters: {},
+  ssh: { allow: [], deny: [] },
 };
 
 const DEFAULT_TOOLS_CONFIG: ToolsConfig = {
@@ -272,6 +274,12 @@ function parseInterpreters(raw: unknown, source: string): Record<string, Interpr
   return out;
 }
 
+function parseSsh(raw: unknown): SshConfig {
+  if (typeof raw !== "object" || raw === null) return { allow: [], deny: [] };
+  const o = raw as Record<string, unknown>;
+  return { allow: asStringArray(o["allow"]), deny: asStringArray(o["deny"]) };
+}
+
 const SECRET_SCANNER_NAMES = ["auto", "gitleaks", "betterleaks", "trufflehog", "detect-secrets"] as const;
 
 /** Parse a `secrets:` block. Unset fields stay undefined so merging is field-level. */
@@ -386,6 +394,7 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
   const redirects = parseRedirectRules(bashRaw["redirects"], source);
   const argumentRules = parseArgumentRules(bashRaw["arguments"], source);
   const interpreters = parseInterpreters(bashRaw["interpreters"], source);
+  const ssh = parseSsh(bashRaw["ssh"]);
 
   const checks = ((bashRaw["checks"] ?? []) as unknown[])
     .filter((r): r is Record<string, unknown> => {
@@ -443,6 +452,7 @@ function validateConfig(raw: unknown, source: string): FencepostConfig | null {
         redirects,
         arguments: argumentRules,
         interpreters,
+        ssh,
       },
     },
   };
@@ -525,6 +535,10 @@ function mergeConfigs(base: FencepostConfig, override: FencepostConfig): Fencepo
         redirects: [...(base.tools.bash.redirects ?? []), ...(override.tools.bash.redirects ?? [])],
         arguments: [...(base.tools.bash.arguments ?? []), ...(override.tools.bash.arguments ?? [])],
         interpreters: mergeInterpreters(base.tools.bash.interpreters, override.tools.bash.interpreters),
+        ssh: {
+          allow: [...(base.tools.bash.ssh?.allow ?? []), ...(override.tools.bash.ssh?.allow ?? [])],
+          deny: [...(base.tools.bash.ssh?.deny ?? []), ...(override.tools.bash.ssh?.deny ?? [])],
+        },
         // Scalars: override only when explicitly set, otherwise inherit the base.
         discourageChaining: override.tools.bash.discourageChaining ?? base.tools.bash.discourageChaining,
         offerManualRun: override.tools.bash.offerManualRun ?? base.tools.bash.offerManualRun,
