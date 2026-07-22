@@ -64,3 +64,4 @@ tools:
       - git config --list
       - git blame
       - git shortlog
+      - git check-ignore
