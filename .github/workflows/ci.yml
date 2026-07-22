@@ -46,8 +46,8 @@ jobs:
           echo '{"tool_name":"Read","tool_input":{},"session_id":"ci","cwd":"/tmp","hook_event_name":"PreToolUse","tool_use_id":"x"}' \
             | node dist/index.js evaluate
 
-  codeql:
-    name: CodeQL
+  opengrep:
+    name: Opengrep
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -57,14 +57,41 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+      # opengrep-rules has no tagged releases (it's a rolling ruleset repo),
+      # so this floats on main. Only the language packs relevant to this
+      # codebase (TS/JS/bash) plus the cross-language `generic` pack.
+      - name: Check out opengrep rules
+        uses: actions/checkout@v6
         with:
-          languages: javascript-typescript
-          config-file: ./.github/codeql/codeql-config.yml
+          repository: opengrep/opengrep-rules
+          path: opengrep-rules
+          sparse-checkout: |
+            typescript
+            javascript
+            bash
+            generic
 
-      - name: CodeQL analyze
-        uses: github/codeql-action/analyze@v4
+      - name: Install opengrep
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+          echo "$HOME/.opengrep/cli" >> "$GITHUB_PATH"
+
+      - name: Opengrep scan
+        run: |
+          opengrep scan \
+            --config opengrep-rules/typescript \
+            --config opengrep-rules/javascript \
+            --config opengrep-rules/bash \
+            --config opengrep-rules/generic \
+            --exclude docs \
+            --sarif-output=opengrep-results.sarif \
+            --no-error .
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: opengrep-results.sarif
+          category: opengrep
 
   osv-scan:
     name: Dependency vulnerability scan
