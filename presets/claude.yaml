@@ -13,29 +13,53 @@ redirect:
   tmpTarget: /tmp/claude
 
 tools:
-  # WebFetch and WebSearch are intentionally NOT allow-listed; they reach
-  # external services, so they fall through to your `default` decision (see
-  # the claude-web preset). `Bash` is also intentionally absent: fencepost
-  # always routes Bash through the bash command pipeline, so listing it here
-  # would have no effect.
+  # A few built-in tools are intentionally NOT allow-listed, so they fall
+  # through to your `default` decision:
+  #   - `Bash` and `PowerShell` run arbitrary shell commands; fencepost
+  #     always routes Bash through the bash command pipeline (and PowerShell
+  #     deserves the same caution), so listing them here would have no effect
+  #     or would skip that scrutiny.
+  #   - `WebFetch` and `WebSearch` reach external services (see the
+  #     claude-web preset).
+  #   - `Artifact`, `RemoteTrigger`, `SendUserFile`, `PushNotification`, and
+  #     `ShareOnboardingGuide` publish, upload, or deliver content to
+  #     claude.ai or a connected device.
+  #   - `EnterWorktree` and `Workflow` are heavier operations (moving the
+  #     session's working directory, fanning out many subagents) worth a
+  #     prompt.
+  #   - `EndConversation` can't be blocked by permission rules at all, so
+  #     listing it here would have no effect.
   allow:
     - Read
     - Glob
     - Grep
-    - Explore
+    - LSP
+    - ListMcpResourcesTool
+    - ReadMcpResourceTool
     - Edit
     - Write
     - NotebookEdit
     - TodoWrite
-    - Task
+    - TaskCreate
+    - TaskGet
+    - TaskList
+    - TaskUpdate
+    - TaskOutput
+    - TaskStop
+    - CronCreate
+    - CronList
+    - CronDelete
+    - ScheduleWakeup
+    - WaitForMcpServers
+    - EnterPlanMode
     - ExitPlanMode
-    - BashOutput
-    - KillShell
+    - ExitWorktree
     - Monitor
     - Skill
     - ToolSearch
     - Agent
-    - TaskStop
+    - SendMessage
+    - ReportFindings
     - AskUserQuestion
 
   bash:
