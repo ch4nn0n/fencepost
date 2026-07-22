@@ -19,7 +19,7 @@ tools:
           - '--environment[= ]\S+'
           - '-l \S+'
           - '--selector[= ]\S+'
-          - '--skip-deps'
+          - "--skip-deps"
 
     checks:
       - test: 'helmfile\s+(destroy|delete)\b'
@@ -44,3 +44,4 @@ tools:
       - helmfile deps
       - helmfile version
       - helmfile write-values
+      - helmfile --version
