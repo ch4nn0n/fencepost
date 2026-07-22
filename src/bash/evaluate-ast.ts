@@ -14,6 +14,7 @@ import { argumentRuleMatches, redirectRuleMatches } from "./rules.js";
 import { normaliseCommand } from "./normalise.js";
 import { prefixMatch } from "../util/prefix-match.js";
 import { matchesGlob } from "../util/glob.js";
+import { safeCompileRegex } from "../util/safe-regex.js";
 import { logger } from "../logger.js";
 import type { Decision, EvalResult, FencepostConfig, SshConfig } from "../types.js";
 import type { ExtractedCommand, Redirect } from "./ast.js";
@@ -324,11 +325,8 @@ async function evaluateSshPayload(
 }
 
 function safeTest(pattern: string, text: string): boolean {
-  try {
-    return new RegExp(pattern).test(text);
-  } catch {
-    return false;
-  }
+  const re = safeCompileRegex(pattern);
+  return re ? re.test(text) : false;
 }
 
 /**

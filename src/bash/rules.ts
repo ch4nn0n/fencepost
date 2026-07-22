@@ -3,6 +3,7 @@
 
 import { matchesGlob } from "../util/glob.js";
 import { isOutsideAllRoots, isUnderRoot, matchesPathGlob, pathValueOf } from "../util/path-match.js";
+import { safeCompileRegex } from "../util/safe-regex.js";
 import { logger } from "../logger.js";
 import type { ArgumentRule, RedirectRule } from "../types.js";
 import type { ExtractedCommand, Redirect } from "./ast.js";
@@ -44,22 +45,20 @@ export function argumentRuleMatches(rule: ArgumentRule, cmd: ExtractedCommand, c
     return paths.length > 0 && paths.every((p) => rule.allArgsInside!.some((root) => isUnderRoot(p, root, cwd)));
   }
   if (rule.anyArgMatches) {
-    try {
-      const re = new RegExp(rule.anyArgMatches);
-      return cmd.args.some((a) => re.test(a));
-    } catch {
+    const re = safeCompileRegex(rule.anyArgMatches);
+    if (!re) {
       logger.warn({ pattern: rule.anyArgMatches }, "invalid arguments.anyArgMatches regex, skipping");
       return false;
     }
+    return cmd.args.some((a) => re.test(a));
   }
   if (rule.allArgsMatch) {
-    try {
-      const re = new RegExp(rule.allArgsMatch);
-      return cmd.args.length > 0 && cmd.args.every((a) => re.test(a));
-    } catch {
+    const re = safeCompileRegex(rule.allArgsMatch);
+    if (!re) {
       logger.warn({ pattern: rule.allArgsMatch }, "invalid arguments.allArgsMatch regex, skipping");
       return false;
     }
+    return cmd.args.length > 0 && cmd.args.every((a) => re.test(a));
   }
   return false;
 }

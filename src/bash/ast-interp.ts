@@ -5,6 +5,7 @@
 import { loadGrammar } from "./ast.js";
 import { nameMatches } from "./rules.js";
 import { isOutsideAllRoots } from "../util/path-match.js";
+import { safeCompileRegex } from "../util/safe-regex.js";
 import { logger } from "../logger.js";
 import type { EvalResult, FencepostConfig, InterpreterConfig } from "../types.js";
 import type { ExtractedCommand } from "./ast.js";
@@ -139,12 +140,8 @@ export async function analyseInterpreter(
       for (const call of calls) {
         if (!nameMatches(call.callee, rule.match)) continue;
         if (rule.argMatches) {
-          try {
-            const re = new RegExp(rule.argMatches);
-            if (!call.argTexts.some((a) => re.test(a))) continue;
-          } catch {
-            continue;
-          }
+          const re = safeCompileRegex(rule.argMatches);
+          if (!re || !call.argTexts.some((a) => re.test(a))) continue;
         }
         if (rule.pathArgsOutside) {
           const outside = call.stringArgs.some((p) => isOutsideAllRoots(p, rule.pathArgsOutside!, cwd));

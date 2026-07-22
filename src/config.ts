@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { logger } from "./logger.js";
+import { safeCompileRegex } from "./util/safe-regex.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 import type {
@@ -126,13 +127,9 @@ function optStr(v: unknown): string | undefined {
 }
 
 function validRegex(pattern: unknown, source: string, where: string): boolean {
-  try {
-    new RegExp(String(pattern));
-    return true;
-  } catch {
-    note("warning", source, `${where}: invalid regex ${JSON.stringify(pattern)}, skipping rule`);
-    return false;
-  }
+  if (safeCompileRegex(String(pattern))) return true;
+  note("warning", source, `${where}: invalid regex ${JSON.stringify(pattern)}, skipping rule`);
+  return false;
 }
 
 // ---- Structured bash rule parsers (features 20/21) ----
