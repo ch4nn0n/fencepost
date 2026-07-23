@@ -1,6 +1,6 @@
 {
   "name": "fencepost",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Configurable permission gate for Claude Code tool calls",
   "module": "src/index.ts",
   "main": "src/index.ts",
@@ -36,6 +36,7 @@
     "docs:floors": "bun run scripts/sync-secrets-docs.ts",
     "docs:floors:check": "bun run scripts/sync-secrets-docs.ts --check",
     "dev": "bun run src/index.ts",
+    "demo:record": "bash demo/record.sh",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

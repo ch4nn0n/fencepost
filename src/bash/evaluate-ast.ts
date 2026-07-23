@@ -13,8 +13,10 @@ import { analyseInterpreter } from "./ast-interp.js";
 import { argumentRuleMatches, redirectRuleMatches } from "./rules.js";
 import { normaliseCommand } from "./normalise.js";
 import { prefixMatch } from "../util/prefix-match.js";
+import { matchesGlob } from "../util/glob.js";
+import { safeCompileRegex } from "../util/safe-regex.js";
 import { logger } from "../logger.js";
-import type { Decision, EvalResult, FencepostConfig } from "../types.js";
+import type { Decision, EvalResult, FencepostConfig, SshConfig } from "../types.js";
 import type { ExtractedCommand, Redirect } from "./ast.js";
 
 function mostRestrictive(results: EvalResult[]): EvalResult {
@@ -82,10 +84,11 @@ const XARGS_PLAIN_LONGS = new Set([
   "--version",
 ]);
 
-type XargsPayload =
+// null: not a recognised wrapper, or no inner command (bare `xargs` defaults to echo).
+type WrapperPayload =
   | { kind: "command"; cmd: ExtractedCommand }
   | { kind: "opaque"; flag: string }
-  | null; // not xargs, or no inner command (bare `xargs` defaults to echo)
+  | null;
 
 /**
  * Extract the command an `xargs` invocation will run, as a structured command
@@ -99,7 +102,7 @@ type XargsPayload =
  * and a wrong guess can dress a dangerous command up as an allowed one
  * (`xargs -E grep rm -rf /` runs rm, not grep).
  */
-function xargsInnerCommand(cmd: ExtractedCommand): XargsPayload {
+function xargsInnerCommand(cmd: ExtractedCommand): WrapperPayload {
   if (cmd.name !== "xargs") return null;
   const toks = cmd.args;
   let i = 0;
@@ -142,20 +145,207 @@ function xargsInnerCommand(cmd: ExtractedCommand): XargsPayload {
   };
 }
 
-function safeTest(pattern: string, text: string): boolean {
-  try {
-    return new RegExp(pattern).test(text);
-  } catch {
-    return false;
+// GNU timeout option surface, used to find where DURATION (and past it, the
+// wrapped command) starts.
+const TIMEOUT_VALUE_FLAGS = new Set(["k", "s"]);
+const TIMEOUT_PLAIN_FLAGS = new Set(["v"]);
+const TIMEOUT_VALUE_LONGS = new Set(["--kill-after", "--signal"]);
+const TIMEOUT_PLAIN_LONGS = new Set(["--preserve-status", "--foreground", "--verbose", "--help", "--version"]);
+
+/**
+ * Extract the command a `timeout` invocation will run, the same way
+ * xargsInnerCommand does: timeout execs its argv directly without a shell, so
+ * the command is built from argv tokens rather than re-parsed as a joined
+ * string. Any unrecognised flag makes the invocation opaque, same reasoning
+ * as xargs: a wrong guess about where DURATION starts can misplace the
+ * command and dress a dangerous one up as allowed.
+ */
+function timeoutInnerCommand(cmd: ExtractedCommand): WrapperPayload {
+  if (cmd.name !== "timeout") return null;
+  const toks = cmd.args;
+  let i = 0;
+  while (i < toks.length) {
+    const t = toks[i]!;
+    if (!t.startsWith("-") || t === "-") break; // DURATION starts here
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=");
+      const name = eq === -1 ? t : t.slice(0, eq);
+      if (TIMEOUT_PLAIN_LONGS.has(name)) i += 1;
+      else if (TIMEOUT_VALUE_LONGS.has(name)) i += eq === -1 ? 2 : 1;
+      else return { kind: "opaque", flag: t };
+    } else {
+      let consumesNext = false;
+      for (let j = 1; j < t.length; j++) {
+        const ch = t[j]!;
+        if (TIMEOUT_PLAIN_FLAGS.has(ch)) continue;
+        if (TIMEOUT_VALUE_FLAGS.has(ch)) {
+          consumesNext = j === t.length - 1;
+          break;
+        }
+        return { kind: "opaque", flag: t };
+      }
+      i += consumesNext ? 2 : 1;
+    }
   }
+  const rest = toks.slice(i + 1); // toks[i] is DURATION; the command follows it
+  const name = rest[0];
+  if (!name) return null;
+  return {
+    kind: "command",
+    cmd: { text: rest.join(" "), name, args: rest.slice(1), redirects: [], heredoc: null },
+  };
 }
 
-/** Evaluate one simple command across all rule sources in tier order. */
+// OpenSSH client option surface, used to find where the destination (and any
+// trailing remote command) starts. -F (alternate config file) and -J (jump
+// host) are deliberately NOT recognised: a config file can carry its own
+// ProxyCommand/LocalCommand invisibly, and a jump host is itself a
+// destination this walk does not validate. Both fall to the opaque path
+// below rather than being guessed past.
+const SSH_VALUE_FLAGS = new Set(["B", "b", "c", "D", "E", "e", "I", "i", "L", "l", "m", "O", "o", "p", "Q", "R", "S", "W", "w"]);
+const SSH_PLAIN_FLAGS = new Set(["4", "6", "A", "a", "C", "f", "G", "g", "K", "k", "M", "N", "n", "q", "s", "T", "t", "V", "v", "X", "x", "Y", "y"]);
+
+type SshPayload = { kind: "target"; host: string; code: string | null } | { kind: "opaque"; flag: string } | null;
+
+/**
+ * Locate the destination and any trailing remote command in an `ssh`
+ * invocation, using the same bundled-flag walk as xargsInnerCommand /
+ * timeoutInnerCommand. Any flag not in the tables above makes the
+ * invocation opaque rather than guessing where the destination starts,
+ * for the same reason as xargs: a wrong guess can hide a remote command
+ * inside what looks like a flag value.
+ */
+function sshTarget(cmd: ExtractedCommand): SshPayload {
+  if (cmd.name !== "ssh") return null;
+  const toks = cmd.args;
+  let i = 0;
+  while (i < toks.length) {
+    const t = toks[i]!;
+    if (t === "--") {
+      i++;
+      break;
+    }
+    if (!t.startsWith("-") || t === "-") break; // the destination starts here
+    let consumesNext = false;
+    for (let j = 1; j < t.length; j++) {
+      const ch = t[j]!;
+      if (SSH_PLAIN_FLAGS.has(ch)) continue;
+      if (SSH_VALUE_FLAGS.has(ch)) {
+        consumesNext = j === t.length - 1;
+        break;
+      }
+      return { kind: "opaque", flag: t };
+    }
+    i += consumesNext ? 2 : 1;
+  }
+  const host = toks[i];
+  if (!host) return null; // no destination (e.g. `ssh -V`, `ssh -Q cipher`)
+  const rest = toks.slice(i + 1);
+  return { kind: "target", host, code: rest.length > 0 ? rest.join(" ") : null };
+}
+
+/** Does the ssh destination clear the configured host allowlist? Null means
+ * no opinion (unset, or the destination is fine). */
+function sshHostDecision(host: string, ssh: SshConfig | undefined, cmdText: string): EvalResult | null {
+  if (!ssh) return null;
+  for (const pattern of ssh.deny ?? []) {
+    if (matchesGlob(host, pattern)) {
+      return {
+        decision: "deny",
+        reason: `SSH destination "${host}" is on the deny list`,
+        matchedRule: `bash.ssh.deny: ${pattern}`,
+        matchedInput: cmdText,
+      };
+    }
+  }
+  const allow = ssh.allow ?? [];
+  if (allow.length > 0 && !allow.some((p) => matchesGlob(host, p))) {
+    return {
+      decision: "ask",
+      reason: `SSH destination "${host}" is not in the configured host allowlist`,
+      matchedRule: "bash.ssh.allow",
+      matchedInput: cmdText,
+    };
+  }
+  return null;
+}
+
+/**
+ * Resolve an ssh payload (already located by sshTarget): opaque flags apply
+ * the onError posture (fail closed — see sshTarget for why -F/-J land here);
+ * a real destination is checked against bash.ssh.hosts independent of
+ * whether a command follows, since a bare interactive session still opens a
+ * connection to that host; a trailing remote command is rejoined (ssh hands
+ * it to the destination's login shell joined by spaces — sshd re-parses
+ * that string, unlike xargs/timeout which exec their argv directly) and
+ * re-evaluated like a shell wrapper's -c payload, so every other preset's
+ * rules apply to it for free.
+ *
+ * Known gap: the remote command is evaluated against the *local* cwd, since
+ * fencepost has no notion of the remote filesystem. Command-text rules
+ * (deny/ask/checks) are unaffected; cwd-relative path rules (redirects,
+ * arguments' anyArgOutside/allArgsInside) may misfire against remote paths.
+ */
+async function evaluateSshPayload(
+  payload: SshPayload,
+  cmdText: string,
+  config: FencepostConfig,
+  cwd: string,
+  depth: number,
+  results: EvalResult[],
+): Promise<void> {
+  if (!payload) return;
+  const onError = config.onError ?? "ask";
+
+  if (payload.kind === "opaque") {
+    results.push({
+      decision: onError,
+      reason: `Unrecognised ssh flag ${payload.flag}; cannot tell where the destination starts.`,
+      matchedInput: cmdText,
+    });
+    return;
+  }
+
+  const hostResult = sshHostDecision(payload.host, config.tools.bash.ssh, cmdText);
+  if (hostResult) results.push(hostResult);
+
+  if (!payload.code) return; // bare interactive/tunnel session: nothing to unwrap
+
+  if (depth >= MAX_WRAPPER_DEPTH) {
+    logger.warn({ command: cmdText, depth }, "ssh nesting too deep, applying onError posture");
+    results.push({
+      decision: onError,
+      reason: "Command nests wrappers too deeply to analyse safely.",
+      matchedInput: cmdText,
+    });
+    return;
+  }
+
+  results.push(await evaluateBashAst(payload.code, config, cwd, depth + 1));
+}
+
+function safeTest(pattern: string, text: string): boolean {
+  const re = safeCompileRegex(pattern);
+  return re ? re.test(text) : false;
+}
+
+/**
+ * Evaluate one simple command across all rule sources in tier order.
+ * `sshDefaultOverride`, when set, replaces the tier-5 fallback: an ssh
+ * invocation that sshTarget proved has a real trailing remote command
+ * defers to that command's own decision instead of the configured default —
+ * the same role bash.allowChecks plays for `sh -c`/`bash -c` (see
+ * filesystem.yaml). This can't be a preset regex the same way ssh's flag
+ * surface makes "is there really a trailing command" unsafe to guess from
+ * text alone (see sshTarget) — bare `ssh host` must keep asking, so it only
+ * fires when nothing else (deny/checks/ask/allow) already matched.
+ */
 function evaluateCommand(
   cmd: ExtractedCommand,
   config: FencepostConfig,
   cwd: string,
   nested: EvalResult[],
+  sshDefaultOverride?: Decision,
 ): EvalResult {
   const bash = config.tools.bash;
   const text = normaliseCommand(cmd.text, bash.normalise);
@@ -227,15 +417,53 @@ function evaluateCommand(
   }
 
   // Tier 5: default.
+  if (sshDefaultOverride) {
+    return { decision: sshDefaultOverride, reason: "ssh wrapper; the remote command is evaluated on its own merits", matchedInput: text };
+  }
   return { decision: config.default, reason: `No matching rule; default is ${config.default}`, matchedInput: text };
+}
+
+/** Resolve a structured wrapper payload (xargs/timeout) into results: opaque
+ * flags and over-deep nesting apply the onError posture, otherwise the
+ * wrapped command is evaluated recursively in its own right. */
+async function evaluateWrapperPayload(
+  payload: WrapperPayload,
+  label: string,
+  cmdText: string,
+  config: FencepostConfig,
+  cwd: string,
+  depth: number,
+  results: EvalResult[],
+): Promise<void> {
+  if (!payload) return;
+  const onError = config.onError ?? "ask";
+  if (payload.kind === "opaque") {
+    results.push({
+      decision: onError,
+      reason: `Unrecognised ${label} flag ${payload.flag}; cannot tell where the inner command starts.`,
+      matchedInput: cmdText,
+    });
+    return;
+  }
+  if (depth >= MAX_WRAPPER_DEPTH) {
+    logger.warn({ command: cmdText, depth }, `${label} nesting too deep, applying onError posture`);
+    results.push({
+      decision: onError,
+      reason: "Command nests wrappers too deeply to analyse safely.",
+      matchedInput: cmdText,
+    });
+    return;
+  }
+  await evaluateExtracted(payload.cmd, config, cwd, depth + 1, results);
 }
 
 /**
  * Evaluate one extracted command plus anything it wraps. Shell bodies carried
  * by `sh -c` / `bash -c` / `eval` are re-parsed and evaluated so their inner
  * commands face the full rule set instead of riding through as a string
- * argument; the argv handed to `xargs` is evaluated as a command in its own
- * right for the same reason.
+ * argument; the argv handed to `xargs` or `timeout` is evaluated as a command
+ * in its own right for the same reason; `ssh`'s trailing remote command is
+ * rejoined and evaluated the same way as a shell wrapper's payload.
  */
 async function evaluateExtracted(
   cmd: ExtractedCommand,
@@ -245,32 +473,15 @@ async function evaluateExtracted(
   results: EvalResult[],
 ): Promise<void> {
   const nested = await analyseInterpreter(cmd, config, cwd);
-  results.push(evaluateCommand(cmd, config, cwd, nested));
+  const ssh = sshTarget(cmd);
+  results.push(evaluateCommand(cmd, config, cwd, nested, ssh?.kind === "target" && ssh.code ? "allow" : undefined));
 
   const inner = shellWrapperCode(cmd);
   if (inner) results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
 
-  const payload = xargsInnerCommand(cmd);
-  if (!payload) return;
-  const onError = config.onError ?? "ask";
-  if (payload.kind === "opaque") {
-    results.push({
-      decision: onError,
-      reason: `Unrecognised xargs flag ${payload.flag}; cannot tell where the inner command starts.`,
-      matchedInput: cmd.text,
-    });
-    return;
-  }
-  if (depth >= MAX_WRAPPER_DEPTH) {
-    logger.warn({ command: cmd.text, depth }, "xargs nesting too deep, applying onError posture");
-    results.push({
-      decision: onError,
-      reason: "Command nests wrappers too deeply to analyse safely.",
-      matchedInput: cmd.text,
-    });
-    return;
-  }
-  await evaluateExtracted(payload.cmd, config, cwd, depth + 1, results);
+  await evaluateWrapperPayload(xargsInnerCommand(cmd), "xargs", cmd.text, config, cwd, depth, results);
+  await evaluateWrapperPayload(timeoutInnerCommand(cmd), "timeout", cmd.text, config, cwd, depth, results);
+  await evaluateSshPayload(ssh, cmd.text, config, cwd, depth, results);
 }
 
 /** Evaluate loose redirects (not bound to a single command) on their own. */

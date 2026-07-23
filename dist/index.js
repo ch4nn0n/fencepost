@@ -3158,6 +3158,21 @@ var init_logger = __esm(() => {
   };
 });
 
+// src/util/safe-regex.ts
+function safeCompileRegex(pattern, flags2) {
+  if (CATASTROPHIC_SHAPE.test(pattern))
+    return;
+  try {
+    return new RegExp(pattern, flags2);
+  } catch {
+    return;
+  }
+}
+var CATASTROPHIC_SHAPE;
+var init_safe_regex = __esm(() => {
+  CATASTROPHIC_SHAPE = /\([^()]*[+*]\)[+*]/;
+});
+
 // src/util/glob.ts
 function globToRegex(pattern) {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
@@ -5039,27 +5054,26 @@ function argumentRuleMatches(rule, cmd, cwd) {
     return paths.length > 0 && paths.every((p) => rule.allArgsInside.some((root) => isUnderRoot(p, root, cwd)));
   }
   if (rule.anyArgMatches) {
-    try {
-      const re = new RegExp(rule.anyArgMatches);
-      return cmd.args.some((a) => re.test(a));
-    } catch {
+    const re = safeCompileRegex(rule.anyArgMatches);
+    if (!re) {
       logger.warn({ pattern: rule.anyArgMatches }, "invalid arguments.anyArgMatches regex, skipping");
       return false;
     }
+    return cmd.args.some((a) => re.test(a));
   }
   if (rule.allArgsMatch) {
-    try {
-      const re = new RegExp(rule.allArgsMatch);
-      return cmd.args.length > 0 && cmd.args.every((a) => re.test(a));
-    } catch {
+    const re = safeCompileRegex(rule.allArgsMatch);
+    if (!re) {
       logger.warn({ pattern: rule.allArgsMatch }, "invalid arguments.allArgsMatch regex, skipping");
       return false;
     }
+    return cmd.args.length > 0 && cmd.args.every((a) => re.test(a));
   }
   return false;
 }
 var init_rules = __esm(() => {
   init_path_match();
+  init_safe_regex();
   init_logger();
 });
 
@@ -5146,13 +5160,9 @@ async function analyseInterpreter(cmd, config, cwd) {
         if (!nameMatches(call.callee, rule.match))
           continue;
         if (rule.argMatches) {
-          try {
-            const re = new RegExp(rule.argMatches);
-            if (!call.argTexts.some((a) => re.test(a)))
-              continue;
-          } catch {
+          const re = safeCompileRegex(rule.argMatches);
+          if (!re || !call.argTexts.some((a) => re.test(a)))
             continue;
-          }
         }
         if (rule.pathArgsOutside) {
           const outside = call.stringArgs.some((p) => isOutsideAllRoots(p, rule.pathArgsOutside, cwd));
@@ -5205,6 +5215,7 @@ var init_ast_interp = __esm(() => {
   init_ast();
   init_rules();
   init_path_match();
+  init_safe_regex();
   init_logger();
   LANGS = {
     python: {
@@ -5240,12 +5251,12 @@ function normaliseCommand(command, rules) {
       continue;
     let normalised = command;
     for (const pattern of rule.strip) {
-      try {
-        const re = new RegExp(pattern, "g");
-        normalised = normalised.replace(re, "");
-      } catch {
+      const re = safeCompileRegex(pattern, "g");
+      if (!re) {
         logger.warn({ pattern }, "invalid normalise strip pattern, skipping");
+        continue;
       }
+      normalised = normalised.replace(re, "");
     }
     normalised = normalised.replace(/\s{2,}/g, " ").trim();
     if (normalised !== command) {
@@ -5257,6 +5268,7 @@ function normaliseCommand(command, rules) {
 }
 var init_normalise = __esm(() => {
   init_logger();
+  init_safe_regex();
 });
 
 // src/bash/evaluate-ast.ts
@@ -5333,14 +5345,137 @@ function xargsInnerCommand(cmd) {
     cmd: { text: rest.join(" "), name: name2, args: rest.slice(1), redirects: [], heredoc: null }
   };
 }
-function safeTest(pattern, text) {
-  try {
-    return new RegExp(pattern).test(text);
-  } catch {
-    return false;
+function timeoutInnerCommand(cmd) {
+  if (cmd.name !== "timeout")
+    return null;
+  const toks = cmd.args;
+  let i2 = 0;
+  while (i2 < toks.length) {
+    const t = toks[i2];
+    if (!t.startsWith("-") || t === "-")
+      break;
+    if (t.startsWith("--")) {
+      const eq = t.indexOf("=");
+      const name3 = eq === -1 ? t : t.slice(0, eq);
+      if (TIMEOUT_PLAIN_LONGS.has(name3))
+        i2 += 1;
+      else if (TIMEOUT_VALUE_LONGS.has(name3))
+        i2 += eq === -1 ? 2 : 1;
+      else
+        return { kind: "opaque", flag: t };
+    } else {
+      let consumesNext = false;
+      for (let j = 1;j < t.length; j++) {
+        const ch = t[j];
+        if (TIMEOUT_PLAIN_FLAGS.has(ch))
+          continue;
+        if (TIMEOUT_VALUE_FLAGS.has(ch)) {
+          consumesNext = j === t.length - 1;
+          break;
+        }
+        return { kind: "opaque", flag: t };
+      }
+      i2 += consumesNext ? 2 : 1;
+    }
   }
+  const rest = toks.slice(i2 + 1);
+  const name2 = rest[0];
+  if (!name2)
+    return null;
+  return {
+    kind: "command",
+    cmd: { text: rest.join(" "), name: name2, args: rest.slice(1), redirects: [], heredoc: null }
+  };
 }
-function evaluateCommand(cmd, config, cwd, nested) {
+function sshTarget(cmd) {
+  if (cmd.name !== "ssh")
+    return null;
+  const toks = cmd.args;
+  let i2 = 0;
+  while (i2 < toks.length) {
+    const t = toks[i2];
+    if (t === "--") {
+      i2++;
+      break;
+    }
+    if (!t.startsWith("-") || t === "-")
+      break;
+    let consumesNext = false;
+    for (let j = 1;j < t.length; j++) {
+      const ch = t[j];
+      if (SSH_PLAIN_FLAGS.has(ch))
+        continue;
+      if (SSH_VALUE_FLAGS.has(ch)) {
+        consumesNext = j === t.length - 1;
+        break;
+      }
+      return { kind: "opaque", flag: t };
+    }
+    i2 += consumesNext ? 2 : 1;
+  }
+  const host = toks[i2];
+  if (!host)
+    return null;
+  const rest = toks.slice(i2 + 1);
+  return { kind: "target", host, code: rest.length > 0 ? rest.join(" ") : null };
+}
+function sshHostDecision(host, ssh, cmdText) {
+  if (!ssh)
+    return null;
+  for (const pattern of ssh.deny ?? []) {
+    if (matchesGlob(host, pattern)) {
+      return {
+        decision: "deny",
+        reason: `SSH destination "${host}" is on the deny list`,
+        matchedRule: `bash.ssh.deny: ${pattern}`,
+        matchedInput: cmdText
+      };
+    }
+  }
+  const allow = ssh.allow ?? [];
+  if (allow.length > 0 && !allow.some((p) => matchesGlob(host, p))) {
+    return {
+      decision: "ask",
+      reason: `SSH destination "${host}" is not in the configured host allowlist`,
+      matchedRule: "bash.ssh.allow",
+      matchedInput: cmdText
+    };
+  }
+  return null;
+}
+async function evaluateSshPayload(payload, cmdText, config, cwd, depth, results) {
+  if (!payload)
+    return;
+  const onError = config.onError ?? "ask";
+  if (payload.kind === "opaque") {
+    results.push({
+      decision: onError,
+      reason: `Unrecognised ssh flag ${payload.flag}; cannot tell where the destination starts.`,
+      matchedInput: cmdText
+    });
+    return;
+  }
+  const hostResult = sshHostDecision(payload.host, config.tools.bash.ssh, cmdText);
+  if (hostResult)
+    results.push(hostResult);
+  if (!payload.code)
+    return;
+  if (depth >= MAX_WRAPPER_DEPTH) {
+    logger.warn({ command: cmdText, depth }, "ssh nesting too deep, applying onError posture");
+    results.push({
+      decision: onError,
+      reason: "Command nests wrappers too deeply to analyse safely.",
+      matchedInput: cmdText
+    });
+    return;
+  }
+  results.push(await evaluateBashAst(payload.code, config, cwd, depth + 1));
+}
+function safeTest(pattern, text) {
+  const re = safeCompileRegex(pattern);
+  return re ? re.test(text) : false;
+}
+function evaluateCommand(cmd, config, cwd, nested, sshDefaultOverride) {
   const bash = config.tools.bash;
   const text = normaliseCommand(cmd.text, bash.normalise);
   const args2 = bash.arguments ?? [];
@@ -5404,36 +5539,44 @@ function evaluateCommand(cmd, config, cwd, nested) {
     if (prefixMatch(text, rule))
       return base("allow", "Command allowed by rule", `bash.allow: ${rule}`);
   }
+  if (sshDefaultOverride) {
+    return { decision: sshDefaultOverride, reason: "ssh wrapper; the remote command is evaluated on its own merits", matchedInput: text };
+  }
   return { decision: config.default, reason: `No matching rule; default is ${config.default}`, matchedInput: text };
 }
-async function evaluateExtracted(cmd, config, cwd, depth, results) {
-  const nested = await analyseInterpreter(cmd, config, cwd);
-  results.push(evaluateCommand(cmd, config, cwd, nested));
-  const inner = shellWrapperCode(cmd);
-  if (inner)
-    results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
-  const payload = xargsInnerCommand(cmd);
+async function evaluateWrapperPayload(payload, label, cmdText, config, cwd, depth, results) {
   if (!payload)
     return;
   const onError = config.onError ?? "ask";
   if (payload.kind === "opaque") {
     results.push({
       decision: onError,
-      reason: `Unrecognised xargs flag ${payload.flag}; cannot tell where the inner command starts.`,
-      matchedInput: cmd.text
+      reason: `Unrecognised ${label} flag ${payload.flag}; cannot tell where the inner command starts.`,
+      matchedInput: cmdText
     });
     return;
   }
   if (depth >= MAX_WRAPPER_DEPTH) {
-    logger.warn({ command: cmd.text, depth }, "xargs nesting too deep, applying onError posture");
+    logger.warn({ command: cmdText, depth }, `${label} nesting too deep, applying onError posture`);
     results.push({
       decision: onError,
       reason: "Command nests wrappers too deeply to analyse safely.",
-      matchedInput: cmd.text
+      matchedInput: cmdText
     });
     return;
   }
   await evaluateExtracted(payload.cmd, config, cwd, depth + 1, results);
+}
+async function evaluateExtracted(cmd, config, cwd, depth, results) {
+  const nested = await analyseInterpreter(cmd, config, cwd);
+  const ssh = sshTarget(cmd);
+  results.push(evaluateCommand(cmd, config, cwd, nested, ssh?.kind === "target" && ssh.code ? "allow" : undefined));
+  const inner = shellWrapperCode(cmd);
+  if (inner)
+    results.push(await evaluateBashAst(inner, config, cwd, depth + 1));
+  await evaluateWrapperPayload(xargsInnerCommand(cmd), "xargs", cmd.text, config, cwd, depth, results);
+  await evaluateWrapperPayload(timeoutInnerCommand(cmd), "timeout", cmd.text, config, cwd, depth, results);
+  await evaluateSshPayload(ssh, cmd.text, config, cwd, depth, results);
 }
 function evaluateLooseRedirects(looseRedirects, config, cwd) {
   const redirects = config.tools.bash.redirects ?? [];
@@ -5504,12 +5647,13 @@ async function evaluateBashAst(rawCommand, config, cwd, depth = 0) {
   logger.info({ command: rawCommand, decision: winner.decision, rule: winner.matchedRule }, "decision");
   return winner;
 }
-var SHELL_WRAPPERS, MAX_WRAPPER_DEPTH = 8, XARGS_VALUE_FLAGS, XARGS_ATTACHED_OPTIONAL_FLAGS, XARGS_PLAIN_FLAGS, XARGS_VALUE_LONGS, XARGS_OPTIONAL_LONGS, XARGS_PLAIN_LONGS;
+var SHELL_WRAPPERS, MAX_WRAPPER_DEPTH = 8, XARGS_VALUE_FLAGS, XARGS_ATTACHED_OPTIONAL_FLAGS, XARGS_PLAIN_FLAGS, XARGS_VALUE_LONGS, XARGS_OPTIONAL_LONGS, XARGS_PLAIN_LONGS, TIMEOUT_VALUE_FLAGS, TIMEOUT_PLAIN_FLAGS, TIMEOUT_VALUE_LONGS, TIMEOUT_PLAIN_LONGS, SSH_VALUE_FLAGS, SSH_PLAIN_FLAGS;
 var init_evaluate_ast = __esm(() => {
   init_ast();
   init_ast_interp();
   init_rules();
   init_normalise();
+  init_safe_regex();
   init_logger();
   SHELL_WRAPPERS = new Set(["sh", "bash", "dash", "zsh", "ash", "ksh"]);
   XARGS_VALUE_FLAGS = new Set(["a", "d", "E", "I", "L", "n", "P", "s"]);
@@ -5535,6 +5679,12 @@ var init_evaluate_ast = __esm(() => {
     "--help",
     "--version"
   ]);
+  TIMEOUT_VALUE_FLAGS = new Set(["k", "s"]);
+  TIMEOUT_PLAIN_FLAGS = new Set(["v"]);
+  TIMEOUT_VALUE_LONGS = new Set(["--kill-after", "--signal"]);
+  TIMEOUT_PLAIN_LONGS = new Set(["--preserve-status", "--foreground", "--verbose", "--help", "--version"]);
+  SSH_VALUE_FLAGS = new Set(["B", "b", "c", "D", "E", "e", "I", "i", "L", "l", "m", "O", "o", "p", "Q", "R", "S", "W", "w"]);
+  SSH_PLAIN_FLAGS = new Set(["4", "6", "A", "a", "C", "f", "G", "g", "K", "k", "M", "N", "n", "q", "s", "T", "t", "V", "v", "X", "x", "Y", "y"]);
 });
 
 // src/secrets/scanner.ts
@@ -6147,13 +6297,10 @@ function optStr2(v) {
   return v !== undefined ? String(v) : undefined;
 }
 function validRegex2(pattern, source, where) {
-  try {
-    new RegExp(String(pattern));
+  if (safeCompileRegex(String(pattern)))
     return true;
-  } catch {
-    note2("warning", source, `${where}: invalid regex ${JSON.stringify(pattern)}, skipping rule`);
-    return false;
-  }
+  note2("warning", source, `${where}: invalid regex ${JSON.stringify(pattern)}, skipping rule`);
+  return false;
 }
 function parseRedirectRules2(raw, source) {
   if (!Array.isArray(raw))
@@ -6300,6 +6447,12 @@ function parseInterpreters2(raw, source) {
   }
   return out2;
 }
+function parseSsh2(raw) {
+  if (typeof raw !== "object" || raw === null)
+    return { allow: [], deny: [] };
+  const o = raw;
+  return { allow: asStringArray2(o["allow"]), deny: asStringArray2(o["deny"]) };
+}
 function parseSecrets2(raw, source) {
   if (typeof raw !== "object" || raw === null)
     return;
@@ -6393,6 +6546,7 @@ function validateConfig2(raw, source) {
   const redirects = parseRedirectRules2(bashRaw["redirects"], source);
   const argumentRules = parseArgumentRules2(bashRaw["arguments"], source);
   const interpreters = parseInterpreters2(bashRaw["interpreters"], source);
+  const ssh = parseSsh2(bashRaw["ssh"]);
   const checks = (bashRaw["checks"] ?? []).filter((r) => {
     if (typeof r !== "object" || r === null || !("test" in r) || !("description" in r)) {
       note2("warning", source, "bash.checks entry missing test or description, skipping");
@@ -6441,7 +6595,8 @@ function validateConfig2(raw, source) {
         offerManualRun,
         redirects,
         arguments: argumentRules,
-        interpreters
+        interpreters,
+        ssh
       }
     }
   };
@@ -6510,6 +6665,10 @@ function mergeConfigs2(base, override) {
         redirects: [...base.tools.bash.redirects ?? [], ...override.tools.bash.redirects ?? []],
         arguments: [...base.tools.bash.arguments ?? [], ...override.tools.bash.arguments ?? []],
         interpreters: mergeInterpreters2(base.tools.bash.interpreters, override.tools.bash.interpreters),
+        ssh: {
+          allow: [...base.tools.bash.ssh?.allow ?? [], ...override.tools.bash.ssh?.allow ?? []],
+          deny: [...base.tools.bash.ssh?.deny ?? [], ...override.tools.bash.ssh?.deny ?? []]
+        },
         discourageChaining: override.tools.bash.discourageChaining ?? base.tools.bash.discourageChaining,
         offerManualRun: override.tools.bash.offerManualRun ?? base.tools.bash.offerManualRun
       }
@@ -6758,6 +6917,7 @@ var moduleDir2, DEFAULT_DISCOURAGE_CHAINING2 = true, DEFAULT_BASH_CONFIG2, DEFAU
 var init_config = __esm(() => {
   init_js_yaml();
   init_logger();
+  init_safe_regex();
   moduleDir2 = dirname5(fileURLToPath3(import.meta.url));
   DEFAULT_BASH_CONFIG2 = {
     normalise: [],
@@ -6770,7 +6930,8 @@ var init_config = __esm(() => {
     offerManualRun: true,
     redirects: [],
     arguments: [],
-    interpreters: {}
+    interpreters: {},
+    ssh: { allow: [], deny: [] }
   };
   DEFAULT_TOOLS_CONFIG2 = {
     deny: [],
@@ -7129,6 +7290,7 @@ async function readStdin() {
 // src/config.ts
 init_js_yaml();
 init_logger();
+init_safe_regex();
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -7147,7 +7309,8 @@ var DEFAULT_BASH_CONFIG = {
   offerManualRun: true,
   redirects: [],
   arguments: [],
-  interpreters: {}
+  interpreters: {},
+  ssh: { allow: [], deny: [] }
 };
 var DEFAULT_TOOLS_CONFIG = {
   deny: [],
@@ -7203,13 +7366,10 @@ function optStr(v) {
   return v !== undefined ? String(v) : undefined;
 }
 function validRegex(pattern, source, where) {
-  try {
-    new RegExp(String(pattern));
+  if (safeCompileRegex(String(pattern)))
     return true;
-  } catch {
-    note("warning", source, `${where}: invalid regex ${JSON.stringify(pattern)}, skipping rule`);
-    return false;
-  }
+  note("warning", source, `${where}: invalid regex ${JSON.stringify(pattern)}, skipping rule`);
+  return false;
 }
 function parseRedirectRules(raw, source) {
   if (!Array.isArray(raw))
@@ -7356,6 +7516,12 @@ function parseInterpreters(raw, source) {
   }
   return out2;
 }
+function parseSsh(raw) {
+  if (typeof raw !== "object" || raw === null)
+    return { allow: [], deny: [] };
+  const o = raw;
+  return { allow: asStringArray(o["allow"]), deny: asStringArray(o["deny"]) };
+}
 var SECRET_SCANNER_NAMES = ["auto", "gitleaks", "betterleaks", "trufflehog", "detect-secrets"];
 function parseSecrets(raw, source) {
   if (typeof raw !== "object" || raw === null)
@@ -7450,6 +7616,7 @@ function validateConfig(raw, source) {
   const redirects = parseRedirectRules(bashRaw["redirects"], source);
   const argumentRules = parseArgumentRules(bashRaw["arguments"], source);
   const interpreters = parseInterpreters(bashRaw["interpreters"], source);
+  const ssh = parseSsh(bashRaw["ssh"]);
   const checks = (bashRaw["checks"] ?? []).filter((r) => {
     if (typeof r !== "object" || r === null || !("test" in r) || !("description" in r)) {
       note("warning", source, "bash.checks entry missing test or description, skipping");
@@ -7498,7 +7665,8 @@ function validateConfig(raw, source) {
         offerManualRun,
         redirects,
         arguments: argumentRules,
-        interpreters
+        interpreters,
+        ssh
       }
     }
   };
@@ -7567,6 +7735,10 @@ function mergeConfigs(base, override) {
         redirects: [...base.tools.bash.redirects ?? [], ...override.tools.bash.redirects ?? []],
         arguments: [...base.tools.bash.arguments ?? [], ...override.tools.bash.arguments ?? []],
         interpreters: mergeInterpreters(base.tools.bash.interpreters, override.tools.bash.interpreters),
+        ssh: {
+          allow: [...base.tools.bash.ssh?.allow ?? [], ...override.tools.bash.ssh?.allow ?? []],
+          deny: [...base.tools.bash.ssh?.deny ?? [], ...override.tools.bash.ssh?.deny ?? []]
+        },
         discourageChaining: override.tools.bash.discourageChaining ?? base.tools.bash.discourageChaining,
         offerManualRun: override.tools.bash.offerManualRun ?? base.tools.bash.offerManualRun
       }
@@ -8038,18 +8210,19 @@ var logger2 = {
 
 // src/bash/normalise.ts
 init_logger();
+init_safe_regex();
 function normaliseCommand2(command, rules) {
   for (const rule of rules) {
     if (!prefixMatch(command, rule.prefix))
       continue;
     let normalised = command;
     for (const pattern of rule.strip) {
-      try {
-        const re = new RegExp(pattern, "g");
-        normalised = normalised.replace(re, "");
-      } catch {
+      const re = safeCompileRegex(pattern, "g");
+      if (!re) {
         logger.warn({ pattern }, "invalid normalise strip pattern, skipping");
+        continue;
       }
+      normalised = normalised.replace(re, "");
     }
     normalised = normalised.replace(/\s{2,}/g, " ").trim();
     if (normalised !== command) {

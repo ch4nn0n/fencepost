@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.13.0](https://github.com/ch4nn0n/fencepost/compare/v0.12.0...v0.13.0) (2026-07-22)
+
+
+### Features
+
+* **bash:** unwrap sh -c/bash -c and timeout, allow eval ([815ae24](https://github.com/ch4nn0n/fencepost/commit/815ae241997e1d73a5fedc5c22ecca485c667047))
+* **bash:** unwrap ssh, add host allowlisting and ProxyCommand guard ([03961ff](https://github.com/ch4nn0n/fencepost/commit/03961ff495d19b0627b18c92589385e43a9908f1))
+* **presets:** allow git check-ignore in git preset ([010c290](https://github.com/ch4nn0n/fencepost/commit/010c2901dff00dd5b157a2e272aa260ff72daa4c))
+* **presets:** sync claude preset tool allow-list with tools reference ([d3af0ac](https://github.com/ch4nn0n/fencepost/commit/d3af0acc3992f7f662ab498dc7e939016fea3047))
+
+
+### Bug Fixes
+
+* **ci:** correct opengrep install path on PATH ([c91e87d](https://github.com/ch4nn0n/fencepost/commit/c91e87da6ed1260dbea3117156773be010a98466))
+* **presets:** allow helmfile --version, normalize skip-deps quoting ([4a42dcc](https://github.com/ch4nn0n/fencepost/commit/4a42dcc3243b91921daf807576c0c1dceb0b5dbe))
+* **security:** reject nested-quantifier regex shapes from config ([ceaca78](https://github.com/ch4nn0n/fencepost/commit/ceaca78a0e9395f84f442c4d46310fff992d2c58))
+
 ## [0.12.0](https://github.com/ch4nn0n/fencepost/compare/v0.11.0...v0.12.0) (2026-07-20)
 
 

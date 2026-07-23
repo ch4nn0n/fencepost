@@ -46,8 +46,9 @@ jobs:
           echo '{"tool_name":"Read","tool_input":{},"session_id":"ci","cwd":"/tmp","hook_event_name":"PreToolUse","tool_use_id":"x"}' \
             | node dist/index.js evaluate
 
-  codeql:
-    name: CodeQL
+  opengrep:
+    name: Opengrep
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,14 +57,64 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+      # opengrep-rules has no tagged releases (it's a rolling ruleset repo),
+      # so this floats on main. Only the language packs relevant to this
+      # codebase (TS/JS/bash) plus the cross-language `generic` pack.
+      - name: Check out opengrep rules
+        uses: actions/checkout@v6
         with:
-          languages: javascript-typescript
-          config-file: ./.github/codeql/codeql-config.yml
+          repository: opengrep/opengrep-rules
+          path: opengrep-rules
+          sparse-checkout: |
+            typescript
+            javascript
+            bash
+            generic
 
-      - name: CodeQL analyze
-        uses: github/codeql-action/analyze@v4
+      - name: Install opengrep
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+          echo "$HOME/.opengrep/cli/latest" >> "$GITHUB_PATH"
+
+      - name: Opengrep scan
+        run: |
+          opengrep scan \
+            --config opengrep-rules/typescript \
+            --config opengrep-rules/javascript \
+            --config opengrep-rules/bash \
+            --config opengrep-rules/generic \
+            --exclude docs \
+            --sarif-output=opengrep-results.sarif \
+            --json-output=opengrep-results.json \
+            --no-error .
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: opengrep-results.sarif
+          category: opengrep
+
+      - name: Scanned-files summary
+        if: always()
+        run: |
+          {
+            echo "### Opengrep scanned files"
+            if [ -f opengrep-results.json ]; then
+              scanned=$(jq '(.paths.scanned // []) | length' opengrep-results.json)
+              skipped=$(jq '(.paths.skipped // []) | length' opengrep-results.json)
+              echo
+              echo "$scanned files scanned, $skipped skipped."
+              echo
+              echo "<details><summary>Scanned files</summary>"
+              echo
+              jq -r '(.paths.scanned // [])[]' opengrep-results.json | sed 's/^/- /'
+              echo
+              echo "</details>"
+            else
+              echo
+              echo "(scan did not produce opengrep-results.json)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   osv-scan:
     name: Dependency vulnerability scan
@@ -78,3 +129,27 @@ jobs:
       # Docusaurus project, not part of fencepost itself, so it's excluded.
       scan-args: |-
         ./
+
+  osv-summary:
+    name: OSV scan summary
+    needs: osv-scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Set as an env var rather than interpolated into the script body,
+      # so the (untrusted-shaped, potentially large) JSON never passes
+      # through shell expansion.
+      OSV_RESULTS: ${{ needs.osv-scan.outputs.results }}
+    steps:
+      - name: Scanned-files summary
+        run: |
+          echo "$OSV_RESULTS" > osv-results.json
+          {
+            echo "### osv-scanner scanned files"
+            echo
+            n=$(jq '(.results // []) | length' osv-results.json)
+            echo "$n lockfile(s)/manifest(s) scanned:"
+            echo
+            jq -r '(.results // [])[] | "- \(.source.path) (\(.packages | length) packages)"' osv-results.json
+          } >> "$GITHUB_STEP_SUMMARY"

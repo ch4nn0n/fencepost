@@ -23,12 +23,14 @@
 #   dispatches the tool call and renders fencepost's prompt noticeably
 #   faster than Sonnet (observed visible by ~11-13s vs Sonnet's ~15-20s).
 #
-# Prereqs (not run by this tape):
+# Prereqs (not run by this tape): `bash demo/record.sh` (or `bun run
+# demo:record`) runs steps 1-2 below for you.
 #   1. bash demo/setup-demo-repo.sh   (builds a disposable local-only repo)
 #   2. vhs demo/fencepost.tape
-#   3. bash demo/speed-up-wait.sh     (optional: compresses the real-time
-#      "model thinking" wait — see that script for why it's a targeted,
-#      verified time-cut rather than blind content-based frame-dropping)
+#   3. bash demo/speed-up-wait.sh     (optional, not run by record.sh:
+#      compresses the real-time "model thinking" wait — see that script for
+#      why it's a targeted, verified time-cut rather than blind
+#      content-based frame-dropping)
 
 Output docs/static/img/demo.gif
 

@@ -72,6 +72,17 @@ export interface BashConfig {
   arguments?: ArgumentRule[];
   // Nested interpreter analysis (feature 21), keyed by language ("python" | "javascript").
   interpreters?: Record<string, InterpreterConfig>;
+  // Host allowlisting for the ssh wrapper. Unset/empty by default: any
+  // destination proceeds to ask/allow based on the remote command's own rules.
+  ssh?: SshConfig;
+}
+
+// ---- SSH host allowlisting ----
+
+/** Glob patterns matched against an ssh destination (e.g. "ops@10.0.40.*"). */
+export interface SshConfig {
+  allow?: string[]; // if non-empty, a destination matching none of these asks
+  deny?: string[]; // a destination matching any of these is denied outright, checked first
 }
 
 // ---- Structured bash rules (feature 20) ----

@@ -90,10 +90,12 @@ import DocCardList from '@theme/DocCardList';
 
 The one most projects want. It makes routine work with Claude Code quiet:
 
-**Allows the built-in tools**: `Read`, `Glob`, `Grep`, `Edit`, `Write`, and the rest of the read/search/task tools (the [generated preset page](./presets/claude.md) has the full, always-current list). Two deliberate exclusions:
+**Allows the built-in tools**: `Read`, `Glob`, `Grep`, `Edit`, `Write`, and the rest of the read/search/task tools (the [generated preset page](./presets/claude.md) has the full, always-current list). A few are deliberately left out, falling through to your `default`:
 
-- **`Bash`** is absent — fencepost always routes Bash through the [command pipeline](./configuration/bash-rules.md), so listing it would do nothing.
-- **`WebFetch` / `WebSearch`** are not allowed — they reach external services, so they fall through to your `default`. Add the `claude-web` preset if you want them.
+- **`Bash` / `PowerShell`** run arbitrary shell commands — fencepost always routes Bash through the [command pipeline](./configuration/bash-rules.md), so listing either here would either do nothing or skip that scrutiny.
+- **`WebFetch` / `WebSearch`** reach external services. Add the `claude-web` preset if you want them.
+- **`Artifact`, `RemoteTrigger`, `SendUserFile`, `PushNotification`, `ShareOnboardingGuide`** publish, upload, or deliver content to claude.ai or a connected device.
+- **`EnterWorktree`, `Workflow`** are heavier operations (moving the session's working directory, fanning out many subagents) worth a prompt.
 
 **Enables the sandbox** — turns on `/tmp` redirection and ships the [structured rules](./configuration/structured-bash-rules.md) that scope destructive ops to `/tmp/claude`.
 

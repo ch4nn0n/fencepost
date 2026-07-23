@@ -1,6 +1,7 @@
 import type { NormaliseRule } from "../types.js";
 import { logger } from "../logger.js";
 import { prefixMatch } from "../util/prefix-match.js";
+import { safeCompileRegex } from "../util/safe-regex.js";
 
 /**
  * Normalise a bash command by stripping irrelevant flags/arguments.
@@ -14,12 +15,12 @@ export function normaliseCommand(command: string, rules: NormaliseRule[]): strin
 
     let normalised = command;
     for (const pattern of rule.strip) {
-      try {
-        const re = new RegExp(pattern, "g");
-        normalised = normalised.replace(re, "");
-      } catch {
+      const re = safeCompileRegex(pattern, "g");
+      if (!re) {
         logger.warn({ pattern }, "invalid normalise strip pattern, skipping");
+        continue;
       }
+      normalised = normalised.replace(re, "");
     }
 
     // Collapse multiple spaces and trim

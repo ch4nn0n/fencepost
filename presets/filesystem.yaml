@@ -18,6 +18,15 @@ tools:
       - '^bash\s+-n\b'
       - '^sh\s+-n\b'
 
+      # bash/sh -c hands fencepost's core evaluator a code string, which it
+      # re-parses and evaluates against the full rule set (see shellWrapperCode
+      # in src/bash/evaluate-ast.ts) — so this only smart-allows the wrapper
+      # invocation itself; the inner command still has to clear every rule on
+      # its own merits. -c must be the literal first argument: `sh script.sh`
+      # (no -c) runs an uninspected file and is deliberately NOT matched here.
+      - '^bash\s+-c\b'
+      - '^sh\s+-c\b'
+
     checks:
       - test: '\bfind\b.*\s-(delete|exec|execdir|ok|okdir)\b'
         description: "find with -delete or -exec runs destructive actions across every match."
@@ -74,10 +83,16 @@ tools:
       - awk
       - sed
       - base64
-      # Plumbing. Safe to allow: fencepost unwraps the command xargs runs and
-      # evaluates it against the full rule set, so `xargs rm` still hits the
-      # rm rules and unrecognised xargs flags fall back to the onError posture.
+      # Plumbing. Safe to allow: fencepost unwraps the command xargs/timeout
+      # runs and evaluates it against the full rule set, so `xargs rm` and
+      # `timeout 5 rm` still hit the rm rules, and unrecognised flags fall
+      # back to the onError posture.
       - xargs
+      - timeout
+      # eval's arguments are always the code it executes (unlike sh/bash,
+      # there's no file-mode), so fencepost's core unwrap always sees and
+      # evaluates the real payload.
+      - eval
       # Misc read-only info
       - echo
       - printf
