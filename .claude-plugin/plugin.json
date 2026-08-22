@@ -1,6 +1,6 @@
 {
   "name": "fencepost",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Configurable permission gate for Claude Code tool calls. Intercepts every tool call and evaluates it against a YAML rule set, allowing, asking, or denying with actionable feedback.",
   "author": {
     "name": "ch4nn0n"
