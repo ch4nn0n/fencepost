@@ -894,7 +894,7 @@ function requireOmap() {
   function resolveYamlOmap(data) {
     if (data === null)
       return true;
-    const objectKeys = [];
+    const objectKeys = {};
     const object = data;
     for (let index = 0, length = object.length;index < length; index += 1) {
       const pair = object[index];
@@ -912,10 +912,9 @@ function requireOmap() {
       }
       if (!pairHasKey)
         return false;
-      if (objectKeys.indexOf(pairKey) === -1)
-        objectKeys.push(pairKey);
-      else
+      if (_hasOwnProperty.call(objectKeys, pairKey))
         return false;
+      Object.defineProperty(objectKeys, pairKey, { value: true });
     }
     return true;
   }
@@ -8081,10 +8080,9 @@ function summarise(input) {
   const oneLine = input.replace(/\s+/g, " ").trim();
   return oneLine.length > 80 ? `${oneLine.slice(0, 79)}…` : oneLine;
 }
-var BOLD_OCHRE = "\x1B[1;38;2;224;164;69m";
-var RESET = "\x1B[0m";
 function formatReason(result) {
-  const prefix = `${BOLD_OCHRE}Fencepost:${RESET}`;
+  const prefix = "Fencepost:";
+  const bullet = "-";
   if (result.decision === "deny") {
     if (result.chained) {
       return `${prefix} this chained command needs approval — run each step (split on && / ; / ||) as a separate command so it can be reviewed individually.`;
@@ -8100,7 +8098,7 @@ function formatReason(result) {
     const rawParts = result.matchedInputs ?? (result.matchedInput ? [result.matchedInput] : []);
     const parts2 = rawParts.length > 0 ? rawParts : ["this command"];
     return `${prefix}
-${parts2.map((p) => `${BOLD_OCHRE}-${RESET} ${summarise(p)}`).join(`
+${parts2.map((p) => `${bullet} ${summarise(p)}`).join(`
 `)}`;
   }
   return result.reason;

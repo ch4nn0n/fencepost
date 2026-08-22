@@ -1,6 +1,6 @@
 {
   "name": "fencepost",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Configurable permission gate for Claude Code tool calls",
   "module": "src/index.ts",
   "main": "src/index.ts",
@@ -48,7 +48,7 @@
     "typescript": "^7.0.2"
   },
   "dependencies": {
-    "js-yaml": "^4.3.0",
+    "js-yaml": "^4.3.1",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "0.22.6"
   }
