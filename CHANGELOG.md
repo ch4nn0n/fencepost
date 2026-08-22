@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/ch4nn0n/fencepost/compare/v0.13.0...v0.13.1) (2026-08-22)
+
+
+### Bug Fixes
+
+* **output:** drop ANSI color from permission prompt reason ([#16](https://github.com/ch4nn0n/fencepost/issues/16)) ([7073ef4](https://github.com/ch4nn0n/fencepost/commit/7073ef4b15ca8c92dcd498b8ec0e3cc131807986))
+
 ## [0.13.0](https://github.com/ch4nn0n/fencepost/compare/v0.12.0...v0.13.0) (2026-07-22)
 
 
